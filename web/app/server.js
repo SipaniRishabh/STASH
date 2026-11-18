@@ -12,9 +12,10 @@ const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 const HEADERS = Object.fromEntries(
   JSON.parse(readFileSync(new URL("./vercel.json", import.meta.url))).headers[0].headers.map((h) => [h.key, h.value]),
 );
+const SITE = (process.env.RENDER_EXTERNAL_URL || process.env.SITE_URL || "").replace(/\/$/, "");
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".mjs": "text/javascript",
+  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".woff2": "font/woff2", ".mjs": "text/javascript",
   ".map": "application/json", ".txt": "text/plain",
 };
 
@@ -59,6 +60,8 @@ createServer(async (req, res) => {
       file = join(DIST, "index.html");
       data = await readFile(file);
     }
+    // Link-preview tags need absolute URLs. Render sets RENDER_EXTERNAL_URL (e.g. https://jobber-xxxx.onrender.com).
+    if (file.endsWith("index.html")) data = String(data).replaceAll("__SITE__", SITE || `https://${req.headers.host}`);
     const immutable = file.includes(`${sep}assets${sep}`);
     res.writeHead(200, {
       "Content-Type": TYPES[extname(file)] || "application/octet-stream",
