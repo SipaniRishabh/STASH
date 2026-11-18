@@ -189,3 +189,5 @@ Decided:
   job list use the tailored score once it exists. A tailored resume that changed after scoring shows a "re-score" banner.
 - **2026-11-18:** Hosting moved to Render: `render.yaml` blueprint and `web/app/server.js` (Node, no dependencies) serving
   `dist/` with the same security headers and `/api/jobs` with a 1-hour in-memory cache that also merges identical in-flight searches.
+- **2026-11-18:** Link previews: page description, Open Graph and Twitter card tags with a 1200x630 share image (`public/og.png`)
+  and a favicon. `server.js` fills in absolute URLs from Render's `RENDER_EXTERNAL_URL`.
