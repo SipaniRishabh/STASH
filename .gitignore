@@ -1,0 +1,9 @@
+.venv/
+credentials/
+config.json
+data/
+resumes/tailored/
+web/app/node_modules/
+web/app/dist/
+.env
+.DS_Store

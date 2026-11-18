@@ -1,0 +1,74 @@
+{
+  "name": "Rishabh Sipani",
+  "headline": "AI Product Manager | IIT (BHU) Varanasi",
+  "contact": {
+    "email": "rishabh151096@gmail.com",
+    "phone": "+91-7439302713",
+    "location": "Bengaluru, India",
+    "linkedin": "linkedin.com/in/rishabh-sipani-1510rs"
+  },
+  "summary": "Product Manager with 6+ years building B2C, e-commerce, and enterprise AI products, from consumer apps and subscription models to AI companions and production LLM agents with evals and guardrails. Experienced in taking products from 0-to-1 and scaling them, turning manual, high-friction workflows into measurable gains in growth, retention, and cost.",
+  "experience": [
+    {
+      "title": "AI Product Manager",
+      "company": "Prezent.ai",
+      "blurb": "B2B Enterprise AI Communication Platform ($400M valuation, 100+ Fortune 2000 biopharma companies)",
+      "location": "Los Altos, California (Remote)",
+      "dates": "04/2026 - Present",
+      "bullets": [
+        "Owned the AI agent strategy for Services teams, built 3 AI-powered agents on a shared platform using Claude Code with minimal engineering, saving ~270hrs/week ($370K/yr), absorbing volume growth without new hires",
+        "Identified pharma deck review as the services delivery bottleneck and built multimodal agents that learn from reviewer feedback, cutting review time from 3 hrs to <30 min per deck",
+        "Shipped a visual-asset agent that finds and ranks licensed images for every biopharma slide and learns designer taste, cutting asset search from ~1 hr to <15 min per deck",
+        "Led a team of 2 to ship a RAG and text-to-SQL AI assistant for the product team, giving self-serve answers to data questions and cutting ad-hoc requests by 50% and release-note effort by 90%"
+      ]
+    },
+    {
+      "title": "Product Manager",
+      "company": "JetSynthesys",
+      "blurb": "Digital entertainment & technology conglomerate ($410M valuation)",
+      "location": "Pune, India",
+      "dates": "09/2023 - 04/2026",
+      "bullets": [
+        "Promoted from Sr. Product Analyst to PM, led the launch of RightLife.ai, a new consumer health app, scaling it to 60K+ downloads and ~INR 22L ARR in Year 1",
+        "Redesigned the monetization model from pay-per-feature to a single subscription based on usage analysis and purchase patterns, lifting revenue by 15% and checkout conversion by 28%",
+        "Doubled RightLife's activation to 40% by redesigning onboarding to get users to their first personalised plan faster",
+        "Led a build-vs-buy evaluation for meal recipe intelligence, weighing cost, accuracy, and control, and built it in-house, cutting INR 25L/yr in vendor costs",
+        "Launched Inner Avatars, AI-powered guide personas on Thinkright.me, a meditation app with 5M+ installs, reaching 18% of MAU in 3 months and lifting D30 retention by 22%"
+      ]
+    },
+    {
+      "title": "Associate Product Manager",
+      "company": "Spinny",
+      "blurb": "Full-stack used-car retailing platform ($1.8B valuation)",
+      "location": "Gurugram, India",
+      "dates": "02/2022 - 09/2023",
+      "bullets": [
+        "Launched a car self-inspection flow letting sellers assess their own cars and sell, speeding up used-car procurement by 2 days and lifting cars acquired by 18%",
+        "Shipped a WhatsApp support chatbot for post-sale queries, handling 4K+ queries/month, cutting inbound support calls by 15% and support costs by 10%",
+        "Fixed drop-off points on the demand car listing page by analysing behaviour data of past converted buyers, adding 40K high-intent buyer leads a month and cutting funnel drop-off by 30%"
+      ]
+    },
+    {
+      "title": "Consultant - Analytics",
+      "company": "EXL Services",
+      "blurb": "Global data analytics and digital transformation operations (NASDAQ: EXLS)",
+      "location": "Gurugram, India",
+      "dates": "10/2020 - 02/2022",
+      "bullets": [
+        "Redesigned credit-loss forecasting approach for a global bank's retail lending portfolio, worked with business stakeholders to sharpen default-risk signals, cutting projected loan default losses by 15%",
+        "Built customer segmentation models on repayment and usage behaviour to identify high-propensity, low-risk customers for credit-line increase campaigns, lifting campaign response by 25%"
+      ]
+    }
+  ],
+  "education": [
+    {"degree": "Bachelor and Master of Technology, Mining Engineering", "school": "IIT (BHU) Varanasi", "dates": "2015 - 2020"}
+  ],
+  "skills": [
+    {"label": "Product", "items": ["Product Strategy & Roadmaps", "Product-Led Growth", "Cross-Functional Leadership", "Product Analytics"]},
+    {"label": "AI Concepts", "items": ["Workflow Automation", "AI Agents", "RAG", "Evals & LLM-as-Judge", "Guardrails & Human-in-the-Loop"]},
+    {"label": "Build and Data", "items": ["Claude Chat & Code", "Lovable", "Replit", "JIRA", "SQL", "BigQuery", "Tableau", "Google Analytics"]}
+  ],
+  "certifications": [
+    "AI Product Management course, live cohort by Ayuda by Malay Krishna (Director of PM @ Vyapar)"
+  ]
+}

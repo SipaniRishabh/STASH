@@ -1,0 +1,27 @@
+{
+  "name": "Rishabh Sipani",
+  "resume_pdf": "/Users/rishabhsipani/Personal/AI Product Manager Resume_Rishabh Sipani.pdf",
+  "home_location": "Bengaluru, India",
+  "years_experience": 6,
+  "current_title": "AI Product Manager",
+  "target_titles": ["Product Manager", "Product Manager I", "Product Manager II", "Senior Product Manager"],
+  "title_include": ["product manager"],
+  "title_exclude": ["director", "vp", "vice president", "head of", "principal", "group product", "staff", "intern", "associate product manager", "marketing", "chief"],
+  "markets": {
+    "india": "any work mode",
+    "us": "remote only, must be open to India",
+    "europe": "remote only, must be open to India"
+  },
+  "india_locations": ["india", "bengaluru", "bangalore", "mumbai", "delhi", "new delhi", "gurugram", "gurgaon", "noida", "pune", "hyderabad", "chennai", "kolkata", "ahmedabad"],
+  "max_age_days": 60,
+  "keywords": ["ai", "llm", "agent", "rag", "evals", "guardrails", "b2c", "consumer", "subscription", "monetization", "growth", "retention", "activation", "onboarding", "e-commerce", "marketplace", "enterprise", "saas", "analytics", "sql", "experimentation", "a/b", "0 to 1", "roadmap", "automation", "chatbot", "health"],
+  "preferences": {
+    "salary_floor": null,
+    "industries_preferred": null,
+    "industries_avoid": null,
+    "company_stage": null,
+    "deal_breakers": null,
+    "notice_period": null,
+    "open_to_relocation": null
+  }
+}

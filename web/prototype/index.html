@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jobber · Job Agent prototype</title>
+<style>
+:root{
+  --bg:#f7f6f1;--card:#fff;--ink:#1c1c1a;--muted:#6b6a63;--line:#e6e3d9;--soft:#efede6;
+  --accent:#2c5e4a;--accent-soft:#e3efe8;--good:#2e9d6a;--good-soft:#e1f3ea;
+  --warn:#df7a26;--warn-soft:#fcebdc;--bad:#cf4339;--bad-soft:#fbe4e1;--blue:#3858c9;--blue-soft:#e6ebfa;
+  --r:14px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+a{color:var(--accent)}
+button{font:inherit;cursor:pointer}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+header.top{display:flex;align-items:center;justify-content:space-between;padding:16px 0}
+.brand{font-weight:800;letter-spacing:.5px;font-size:18px;display:flex;gap:8px;align-items:center;text-decoration:none;color:var(--ink)}
+.brand i{width:26px;height:26px;border-radius:8px;background:var(--accent);display:inline-block;position:relative}
+.brand i:after{content:"";position:absolute;inset:7px;border:2px solid #fff;border-radius:50%}
+.proto{font-size:12px;color:var(--muted);border:1px dashed var(--line);padding:3px 8px;border-radius:99px}
+.keychip{font-size:13px;display:flex;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);padding:6px 10px;border-radius:99px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block}
+
+/* stepper */
+nav.steps{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:5px;margin:4px 0 22px;overflow-x:auto}
+nav.steps a{flex:1;white-space:nowrap;text-align:center;padding:8px 12px;border-radius:99px;text-decoration:none;color:var(--muted);font-size:14px}
+nav.steps a b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--soft);font-size:11px;margin-right:6px}
+nav.steps a.on{background:var(--accent);color:#fff}
+nav.steps a.on b{background:rgba(255,255,255,.2)}
+nav.steps a.done b{background:var(--good);color:#fff}
+
+section.screen{display:none;padding-bottom:60px}
+section.screen.on{display:block}
+h1{font-size:40px;line-height:1.1;margin:0 0 12px;letter-spacing:-.5px}
+h2{font-size:24px;margin:0 0 4px}
+h3{font-size:16px;margin:0 0 8px}
+.sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+.btn{border:0;border-radius:10px;padding:11px 18px;background:var(--accent);color:#fff;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.sm{padding:6px 12px;font-size:13px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.pill{display:inline-block;font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);background:var(--card);white-space:nowrap}
+.pill.good{background:var(--good-soft);border-color:transparent;color:#1f6e4a}
+.pill.warn{background:var(--warn-soft);border-color:transparent;color:#a3520f}
+.pill.bad{background:var(--bad-soft);border-color:transparent;color:#a32d24}
+.pill.blue{background:var(--blue-soft);border-color:transparent;color:var(--blue)}
+.muted{color:var(--muted)}.small{font-size:13px}
+input,textarea,select{font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;width:100%;color:var(--ink)}
+textarea{min-height:110px;resize:vertical}
+label{font-size:13px;font-weight:600;display:block;margin:12px 0 6px}
+.note{background:var(--accent-soft);border-radius:10px;padding:10px 14px;font-size:13px;color:#24503e}
+
+/* landing */
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:40px 0}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.flow div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:13px}
+.flow div b{display:block;font-size:14px;margin-bottom:2px}
+
+/* report layout (score rail + detail) */
+.report{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}
+.rail{position:sticky;top:12px}
+.gauge{text-align:center}
+.gauge svg{width:190px;height:110px}
+.gauge .num{font-size:34px;font-weight:800;margin-top:-34px}
+.gauge .lbl{font-size:13px;color:var(--muted)}
+.cat{border-top:1px solid var(--line);padding:10px 0}
+.cat>button{all:unset;cursor:pointer;display:flex;width:100%;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600}
+.cat ul{list-style:none;margin:8px 0 0;padding:0;display:none}
+.cat.open ul{display:block}
+.cat li{display:flex;justify-content:space-between;align-items:center;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:14px}
+.cat li:hover,.cat li.sel{background:var(--soft)}
+.ok:before{content:"✓";color:var(--good);font-weight:700;margin-right:8px}
+.no:before{content:"✕";color:var(--bad);font-weight:700;margin-right:8px}
+.detail{background:#e9ebf1;border-radius:20px;padding:26px}
+.detail .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.detail .inner{background:#fff;border-radius:14px;padding:22px}
+.bar{height:12px;border-radius:99px;background:repeating-linear-gradient(45deg,var(--bad-soft) 0 6px,#fff 6px 12px);overflow:hidden;border:1px solid var(--line)}
+.bar>i{display:block;height:100%;background:var(--good);border-radius:99px}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.ba>div{border:1px solid var(--line);border-radius:12px;padding:14px;font-size:14px}
+.ba .before{background:#fff8f7}.ba .after{background:#f4fbf7}
+.ba h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+mark{background:#fff0b8;padding:0 2px;border-radius:3px}
+del{color:var(--bad)}
+.evid{width:100%;border-collapse:collapse;font-size:14px}
+.evid td,.evid th{border-bottom:1px solid var(--line);padding:9px 6px;text-align:left;vertical-align:top}
+.evid th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+
+/* jobs */
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filters select{width:auto;padding:7px 10px;font-size:13px}
+.job{display:grid;grid-template-columns:64px 1fr auto;gap:16px;align-items:center;padding:16px;border:1px solid var(--line);background:#fff;border-radius:14px;margin-bottom:10px;cursor:pointer}
+.job:hover{border-color:var(--accent)}
+.ring{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--soft) 0)}
+.ring span{width:44px;height:44px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:15px}
+.job h3{margin:0}
+.paste{border:2px dashed var(--line);background:transparent}
+
+/* tailor */
+.doc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px;font-size:13px;line-height:1.55}
+.doc h4{margin:12px 0 4px;font-size:12px;letter-spacing:.7px}
+.doc ul{margin:4px 0;padding-left:18px}
+.checks li{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.checks{list-style:none;margin:0;padding:0}
+
+/* tracker */
+table.tr{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;border:1px solid var(--line);font-size:14px}
+table.tr th,table.tr td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left}
+table.tr th{background:var(--soft);font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+table.tr select{padding:5px 8px;font-size:13px;width:auto}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.stat b{font-size:22px;display:block}
+
+.drop{border:2px dashed var(--line);border-radius:14px;padding:30px;text-align:center;background:#fff}
+.chips span{display:inline-block;background:var(--soft);padding:5px 10px;border-radius:99px;margin:0 6px 6px 0;font-size:13px}
+.chips span.on{background:var(--accent);color:#fff}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;display:none}
+
+@media (max-width:860px){
+  .hero,.report,.g2,.g3,.ba{grid-template-columns:1fr}
+  .rail{position:static}
+  h1{font-size:30px}
+  .flow{grid-template-columns:1fr 1fr}
+  .job{grid-template-columns:56px 1fr}
+  .job>.right{grid-column:1/-1}
+  nav.steps a{flex:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <a class="brand" href="#home"><i></i>JOBBER</a>
+  <div class="row">
+    <span class="proto">Prototype · sample data</span>
+    <span class="keychip"><span class="dot"></span>Key stored in this browser · <a href="#setup">manage</a></span>
+  </div>
+</header>
+
+<nav class="steps" id="steps">
+  <a href="#resume"><b>1</b>Resume</a>
+  <a href="#report"><b>2</b>Resume report</a>
+  <a href="#jobs"><b>3</b>Jobs</a>
+  <a href="#match"><b>4</b>Match report</a>
+  <a href="#tailor"><b>5</b>Tailor</a>
+  <a href="#apply"><b>6</b>Apply</a>
+  <a href="#tracker"><b>7</b>Tracker</a>
+</nav>
+
+<!-- HOME -->
+<section class="screen" id="s-home">
+  <div class="hero">
+    <div>
+      <span class="pill blue">AI job-hunt agent</span>
+      <h1 style="margin-top:14px">Find the right PM roles, tailor an honest resume, and track every application.</h1>
+      <p class="sub">Jobber reads your resume, finds fresh jobs that fit your goals, scores your chances, and rewrites your resume for each role in plain human language. You stay in control of every step.</p>
+      <div class="row">
+        <a class="btn" href="#setup" style="text-decoration:none">Start with my resume</a>
+        <a class="btn ghost" href="#report" style="text-decoration:none">View demo</a>
+      </div>
+      <p class="small muted" style="margin-top:14px">Bring your own Claude API key. Your key and resume never touch our server.</p>
+    </div>
+    <div class="flow">
+      <div><b>1 · Understand</b>Reads your resume and asks what you want next</div>
+      <div><b>2 · Report</b>ATS and writing health check</div>
+      <div><b>3 · Search</b>Jobs from the last 60 days that you can actually apply to</div>
+      <div><b>4 · Score</b>Match score and interview chance, with evidence</div>
+      <div><b>5 · Tailor</b>Honest rewrite. No invented skills, no AI-speak</div>
+      <div><b>6 · Track</b>Status for every application, export anytime</div>
+    </div>
+  </div>
+</section>
+
+<!-- SETUP -->
+<section class="screen" id="s-setup">
+  <div class="grid g2">
+    <div class="card">
+      <h2>Connect Claude</h2>
+      <p class="sub">Jobber runs on your own Anthropic API key. It is saved only in this browser and sent only to Anthropic.</p>
+      <label>Anthropic API key</label>
+      <input type="password" value="sk-ant-api03-xxxxxxxxxxxxxxxx">
+      <div class="row" style="margin-top:14px">
+        <a class="btn" href="#resume" style="text-decoration:none">Save and continue</a>
+        <button class="btn ghost" onclick="toast('Key removed from this browser')">Forget my key</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Before you paste a key</h3>
+      <ul class="small" style="padding-left:18px;margin:0">
+        <li>Create a key at <b>console.anthropic.com</b>, separate from a Claude.ai subscription.</li>
+        <li>Make a dedicated key for Jobber and set a monthly spend limit on it.</li>
+        <li>Typical cost: about $0.05 to $0.30 per job you tailor for.</li>
+        <li>No key? Use <a href="#report">View demo</a> to see the full flow on a sample resume.</li>
+      </ul>
+      <div class="note" style="margin-top:14px">Jobber loads no third-party scripts and shows job text as plain text only, so nothing on the page can read your key.</div>
+    </div>
+  </div>
+</section>
+
+<!-- RESUME -->
+<section class="screen" id="s-resume">
+  <h2>Who you are</h2>
+  <p class="sub">Upload your resume. Jobber summarizes it, then asks a few questions about what you want next.</p>
+  <div class="grid g2">
+    <div>
+      <div class="drop">
+        <b>AI Product Manager Resume_Rishabh Sipani.pdf</b>
+        <div class="small muted">2 pages · parsed in browser · <a href="#resume">replace</a></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>What Jobber understood</h3>
+        <table class="evid">
+          <tr><th style="width:130px">Seniority</th><td>Product Manager, 6+ years. PM since 2023, APM before that, analytics consultant at the start.</td></tr>
+          <tr><th>Strongest in</th><td>Production LLM agents with evals, consumer subscription apps, growth and activation</td></tr>
+          <tr><th>Signature wins</th><td>3 agents saving ~270 hrs/week · RightLife 0 to 1, 60K downloads · activation doubled to 40%</td></tr>
+          <tr><th>Watch-outs</th><td>Under one year in current role · no people-management title · engineering degree outside CS</td></tr>
+        </table>
+        <div class="row" style="margin-top:10px"><button class="btn ghost sm" onclick="toast('Opens an edit box')">Something wrong? Correct it</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>What you want next</h3>
+      <label>Target roles</label>
+      <div class="chips"><span class="on">Product Manager</span><span class="on">Product Manager I</span><span class="on">Product Manager II</span><span class="on">Senior Product Manager</span><span>+ add</span></div>
+      <label>Where you live</label>
+      <input value="Bengaluru, India">
+      <label>Markets and work mode</label>
+      <table class="evid">
+        <tr><td>India</td><td><select><option>Onsite, hybrid or remote</option><option>Remote only</option></select></td></tr>
+        <tr><td>United States</td><td><select><option>Remote, open to India</option><option>Not interested</option></select></td></tr>
+        <tr><td>Europe</td><td><select><option>Remote, open to India</option><option>Not interested</option></select></td></tr>
+      </table>
+      <label>Only show jobs posted in the last</label>
+      <div class="row"><input type="range" min="7" max="90" value="60" style="flex:1" oninput="this.nextElementSibling.textContent=this.value+' days'"><b>60 days</b></div>
+      <label>Deal-breakers</label>
+      <input placeholder="e.g. gambling, crypto, under ₹30L, 6-day weeks">
+      <div class="row" style="margin-top:16px"><a class="btn" href="#report" style="text-decoration:none">See my resume report</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- RESUME REPORT -->
+<section class="screen" id="s-report">
+  <div class="report">
+    <div class="card rail" id="reportRail"></div>
+    <div class="detail" id="reportDetail"></div>
+  </div>
+</section>
+
+<!-- JOBS -->
+<section class="screen" id="s-jobs">
+  <div class="row between">
+    <div><h2>Jobs for you</h2><p class="sub">65 fresh roles found from 24 sources. Showing the best 8 after eligibility checks.</p></div>
+    <button class="btn ghost sm" onclick="toast('Refetching jobs…')">Refresh</button>
+  </div>
+  <div class="card paste" style="margin-bottom:16px">
+    <div class="row between"><h3 style="margin:0">Found a job on LinkedIn or Naukri?</h3><span class="small muted">Paste the job description, Jobber runs the same checks</span></div>
+    <textarea placeholder="Paste the full job description here…" style="margin-top:10px;min-height:70px"></textarea>
+    <div class="row" style="margin-top:10px"><input placeholder="Job link (optional)" style="flex:1"><button class="btn" onclick="toast('Scoring pasted job…')">Score this job</button></div>
+  </div>
+  <div class="filters">
+    <select><option>All markets</option><option>India</option><option>Remote, worldwide</option></select>
+    <select><option>Any eligibility</option><option>Eligible</option><option>Verify</option></select>
+    <select><option>Posted: last 60 days</option><option>Last 14 days</option></select>
+    <select><option>Sort: match</option><option>Sort: newest</option><option>Sort: interview chance</option></select>
+  </div>
+  <div id="jobList"></div>
+</section>
+
+<!-- MATCH -->
+<section class="screen" id="s-match">
+  <div class="report">
+    <div class="card rail" id="matchRail"></div>
+    <div class="detail" id="matchDetail"></div>
+  </div>
+</section>
+
+<!-- TAILOR -->
+<section class="screen" id="s-tailor">
+  <div class="row between">
+    <div><h2 id="tailorTitle">Tailored resume</h2><p class="sub">Only your real experience, reordered and reworded for this role. Changes are highlighted.</p></div>
+    <div class="row"><button class="btn ghost sm" id="tgl" onclick="toggleDoc()">Show original</button></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 320px;align-items:start" id="tailorGrid">
+    <div class="doc" id="doc"></div>
+    <div class="grid">
+      <div class="card">
+        <h3>Checks</h3>
+        <ul class="checks">
+          <li><span>No invented facts</span><span class="pill good">Passed</span></li>
+          <li><span>Human voice (no buzzwords, no dashes)</span><span class="pill good">Passed</span></li>
+          <li><span>ATS layout and parsing</span><span class="pill good">Passed</span></li>
+          <li><span>Keyword coverage</span><span class="pill warn">11 / 13</span></li>
+          <li><span>Length</span><span class="pill good">1 page</span></li>
+        </ul>
+        <p class="small muted" style="margin:10px 0 0">Not covered, because you don't have it: <b>agent marketplace</b>, <b>developer platform</b>. Mention them in interviews only if true.</p>
+      </div>
+      <div class="card">
+        <h3>Your review</h3>
+        <textarea placeholder="Ask for changes, e.g. 'keep the EXL bullets' or 'less about Spinny'"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btn ghost sm" onclick="toast('Rewriting with your notes…')">Request changes</button>
+          <a class="btn sm" href="#apply" style="text-decoration:none">Approve</a>
+        </div>
+        <div class="row small" style="margin-top:12px"><a href="#tailor" onclick="toast('Downloading .docx')">Download .docx</a> · <a href="#tailor" onclick="toast('Downloading .pdf')">Download .pdf</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- APPLY -->
+<section class="screen" id="s-apply">
+  <h2 id="applyTitle">Apply</h2>
+  <p class="sub">Jobber prepares everything. You submit on the company's site, then confirm here.</p>
+  <div class="grid g2" style="align-items:start">
+    <div class="grid" id="answers"></div>
+    <div class="card" style="position:sticky;top:12px">
+      <h3>Checklist</h3>
+      <ul class="checks">
+        <li><span>Job still open</span><span class="pill good">Checked today</span></li>
+        <li><span>Tailored resume approved</span><span class="pill good">Ready</span></li>
+        <li><span>Answers drafted</span><span class="pill good">4 of 4</span></li>
+      </ul>
+      <div class="grid" style="margin-top:16px">
+        <button class="btn ghost" onclick="toast('Opens the job page in a new tab')">Open job page ↗</button>
+        <button class="btn" onclick="submitted()">I've submitted it</button>
+      </div>
+      <p class="small muted">Nothing is logged until you confirm.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TRACKER -->
+<section class="screen" id="s-tracker">
+  <div class="row between">
+    <div><h2>Applications</h2><p class="sub">Update status as things move. Saved in this browser.</p></div>
+    <div class="row"><button class="btn ghost sm" onclick="exportCSV()">Export CSV</button><button class="btn ghost sm" onclick="toast('Downloading .xlsx')">Export Excel</button></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px" id="stats"></div>
+  <div style="overflow-x:auto"><table class="tr" id="trackTable"></table></div>
+</section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUSES=["Applied","Intro Call Done","Interview Scheduled","Passed","Rejected","Ghosted"];
+
+// ---------- resume report data ----------
+const REPORT={score:81,label:"Resume health",cats:[
+ {name:"ATS parsing",pct:82,items:[
+  {n:"Text extraction",ok:false,issues:1,title:"ATS PARSE RATE",
+   body:"Jobber read your PDF the way an Applicant Tracking System does. 94% came through cleanly. Your header uses icons (✉ 📞) and hidden zero-width characters, which some systems drop or turn into garbage, so your phone and email can go missing.",
+   bar:94,before:"✉ rishabh151096@gmail.com | 📞 +91-7439302713 | Location: Bengaluru, India",after:"rishabh151096@gmail.com | +91-7439302713 | Bengaluru, India | linkedin.com/in/rishabh-sipani-1510rs"},
+  {n:"Single-column layout",ok:true,title:"LAYOUT",body:"One column, no tables or text boxes. ATS reads it top to bottom in the right order."},
+  {n:"Standard headings",ok:true,title:"SECTION HEADINGS",body:"Summary, Work Experience, Education, Skills are all recognised headings."}]},
+ {name:"Impact",pct:96,items:[
+  {n:"Quantified results",ok:true,title:"QUANTIFYING IMPACT",body:"14 of 14 bullets carry a number or a concrete result. Strong."},
+  {n:"Scope and ownership",ok:true,title:"SCOPE",body:"Bullets say what you owned and what changed."}]},
+ {name:"Human voice",pct:84,items:[
+  {n:"Buzzwords",ok:true,title:"BUZZWORDS",body:"None of the 50 flagged words (leveraged, spearheaded, robust, passionate…) were found."},
+  {n:"Summary specificity",ok:false,issues:1,title:"SUMMARY",
+   body:"Your summary ends on abstract phrases. Recruiters skim it in seconds, so name one real result instead.",
+   before:"…turning manual, high-friction workflows into <mark>measurable gains in growth, retention, and cost</mark>.",
+   after:"…most recently three production AI agents that save Services teams <mark>about 270 hours a week</mark>."}]},
+ {name:"Repetition",pct:75,items:[
+  {n:"Opening verbs",ok:false,issues:1,title:"REPETITION",
+   body:"Led, Launched, Shipped and Redesigned each open two bullets. It reads as a pattern. Vary where it doesn't cost meaning.",
+   before:"<mark>Led</mark> a build-vs-buy evaluation for meal recipe intelligence…",after:"<mark>Ran</mark> a build-vs-buy evaluation for meal recipe intelligence…"}]},
+ {name:"Length & format",pct:70,items:[
+  {n:"Page count",ok:false,issues:1,title:"PAGE COUNT",body:"Your resume runs onto a second page. With 6 years of experience, one page reads stronger. The two EXL bullets and the certificate are the easiest cuts for most PM roles."},
+  {n:"Bullet length",ok:false,issues:1,title:"BULLET LENGTH",body:"3 bullets wrap past two lines. Long bullets get skimmed past.",
+   before:"Owned the AI agent strategy for Services teams, built 3 AI-powered agents on a shared platform using Claude Code with minimal engineering, saving ~270hrs/week ($370K/yr), absorbing volume growth without new hires",
+   after:"Owned AI agent strategy for Services teams and built 3 agents on a shared platform with Claude Code, saving ~270 hrs/week ($370K/yr) without new hires"}]},
+ {name:"Sections",pct:100,items:[{n:"Contact, summary, experience, education, skills",ok:true,title:"SECTIONS",body:"All the sections recruiters expect are present."}]}
+]};
+
+// ---------- jobs (real titles from first fetch; scores are illustrative) ----------
+const JOBS=[
+ {id:"agentplace",co:"Agentplace",t:"Product Manager (AI Agents)",loc:"Remote · Worldwide",el:"Eligible",age:14,m:86,c:"High",cp:61,src:"Himalayas",
+  why:["Ships AI agents in production today, which is the core of this role","Evals and guardrails experience matches the reliability requirement","Remote role open worldwide"]},
+ {id:"elsa",co:"ELSA Speak",t:"Product Manager, B2C",loc:"India",el:"Eligible",age:42,m:81,c:"Medium",cp:46,src:"Himalayas",
+  why:["Consumer subscription and activation wins map directly","AI-powered consumer features (Inner Avatars)","Posted 42 days ago, so lower chance"]},
+ {id:"inmobi",co:"InMobi",t:"Product Manager",loc:"Bengaluru",el:"Eligible",age:1,m:74,c:"Medium",cp:52,src:"Greenhouse",
+  why:["Posted yesterday","Bengaluru, your city","Ad-tech domain is new for you"]},
+ {id:"outreach",co:"Outreach.io",t:"Senior Product Manager",loc:"India",el:"Eligible",age:0,m:72,c:"Medium",cp:48,src:"Himalayas",
+  why:["Enterprise AI agent work fits their AI sales platform","Senior title is a fair step from 6+ years","B2B SaaS depth is lighter than ideal"]},
+ {id:"highlevel",co:"HighLevel",t:"Sr. Product Manager, B2C and Events",loc:"India",el:"Eligible",age:38,m:70,c:"Medium",cp:38,src:"Himalayas",
+  why:["B2C growth background fits","Events domain is new","Posted 38 days ago"]},
+ {id:"wikimedia",co:"Wikimedia Foundation",t:"Senior Product Manager, Mobile Apps (Contract)",loc:"Remote · incl. India",el:"Verify",age:6,m:64,c:"Medium",cp:33,src:"Himalayas",
+  why:["Consumer mobile apps experience","Contract role, so check terms","Eligibility list includes India, confirm contractor setup"]},
+ {id:"pragmatike",co:"Pragmatike",t:"Product Manager, AI Security",loc:"India",el:"Eligible",age:16,m:62,c:"Low",cp:24,src:"Himalayas",
+  why:["AI guardrails experience is relevant","Security background is a hard requirement you don't have"]},
+ {id:"alpaca",co:"Alpaca",t:"Product Manager, Trading API",loc:"Remote · Worldwide",el:"Eligible",age:16,m:58,c:"Low",cp:22,src:"Himalayas",
+  why:["Requires brokerage or developer API platform experience","Credit-risk analytics at EXL is only partly relevant"]}
+];
+let cur=JOBS[0];
+
+function matchReport(j){
+ const r=x=>Math.round(x);
+ return {score:j.m,label:"Match score",conf:`${j.c} · ${j.cp}%`,cats:[
+  {name:"Must-haves",pct:r(j.m*1.02),items:[{n:"Requirements met",ok:j.m>70,issues:j.m>70?0:1,title:"MUST-HAVE REQUIREMENTS",evidence:true}]},
+  {name:"Seniority fit",pct:r(j.m*1.05>100?100:j.m*1.05),items:[{n:"Years and level",ok:true,title:"SENIORITY",body:"Role asks for 4 to 7 years of product experience. You have 6+, with 3+ in PM titles. Good fit."}]},
+  {name:"Domain fit",pct:r(j.m*0.95),items:[{n:"Industry and product type",ok:j.m>75,issues:j.m>75?0:1,title:"DOMAIN",body:j.why[0]+". "+(j.why[2]||"")}]},
+  {name:"Skills & keywords",pct:r(j.m*0.9),items:[{n:"Keyword coverage",ok:false,issues:2,title:"KEYWORDS",body:"11 of 13 must-have terms already appear in your resume, or will after tailoring. Two are real gaps:",gaps:["agent marketplace","developer platform"]}]},
+  {name:"Location & eligibility",pct:j.el==="Eligible"?100:60,items:[{n:j.loc,ok:j.el==="Eligible",issues:j.el==="Eligible"?0:1,title:"ELIGIBILITY",body:j.el==="Eligible"?"You can apply from India. "+j.loc+".":"The posting lists India but it's a contract role. Check whether they hire through a contractor or employer-of-record."}]},
+  {name:"Interview chance",pct:j.cp,items:[{n:"How this was estimated",ok:j.cp>=40,issues:j.cp>=40?0:1,title:"INTERVIEW CHANCE (ESTIMATE)",
+   body:`Starts from your match score, then adjusts: ${j.age>30?"posted "+j.age+" days ago (−10), ":"posted "+j.age+" days ago (no penalty), "}${j.el!=="Eligible"?"eligibility needs checking (−10), ":""}no referral (+0). This is an estimate. It gets sharper as your tracker fills with real outcomes.`}]}
+ ]};
+}
+
+const EVID=[
+ ["Experience shipping LLM or agent features to production","Built 3 AI-powered agents on a shared platform… saving ~270hrs/week","good"],
+ ["Define evals and quality bars for AI output","Skills: Evals & LLM-as-Judge, Guardrails & Human-in-the-Loop","good"],
+ ["Work closely with engineering in a small team","Led a team of 2 to ship a RAG and text-to-SQL AI assistant","good"],
+ ["Data-driven, comfortable with SQL","SQL, BigQuery; cut ad-hoc data requests by 50%","good"],
+ ["Experience with an agent marketplace or developer platform","Not found in your resume","bad"]
+];
+
+// ---------- renderers ----------
+function gauge(score,label,extra){
+ const L=157,col=score>=80?"var(--good)":score>=60?"var(--warn)":"var(--bad)";
+ return `<div class="gauge"><div class="lbl" style="font-size:20px;color:var(--ink);font-weight:600">${label}</div>
+ <svg viewBox="0 0 120 70"><path d="M10 62 A50 50 0 0 1 110 62" fill="none" stroke="var(--soft)" stroke-width="12" stroke-linecap="round"/>
+ <path d="M10 62 A50 50 0 0 1 110 62" fill="none" stroke="${col}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${score/100*L} ${L}"/></svg>
+ <div class="num" style="color:${col}">${score}<span style="font-size:18px;color:var(--muted)">/100</span></div>
+ ${extra||""}</div>`;
+}
+function pctPill(p){return `<span class="pill ${p>=85?"good":p>=60?"warn":"bad"}">${p}%</span>`}
+function issuePill(it){return it.ok?`<span class="pill good">No issues</span>`:`<span class="pill">${it.issues} issue${it.issues>1?"s":""}</span>`}
+
+function renderReport(rep,railId,detailId,cta,firstIssue=true){
+ const rail=document.getElementById(railId);
+ rail.innerHTML=gauge(rep.score,rep.label,rep.conf?`<div style="margin-top:8px"><span class="pill blue">Interview chance: ${rep.conf}</span></div>`:"")+
+  `<div style="margin:16px 0">${cta}</div>`+
+  rep.cats.map((c,ci)=>`<div class="cat ${ci<2?"open":""}"><button onclick="this.parentElement.classList.toggle('open')"><span>${c.name}</span><span>${pctPill(c.pct)}</span></button>
+   <ul>${c.items.map((it,ii)=>`<li data-c="${ci}" data-i="${ii}" class="${ci===0&&ii===0?"sel":""}"><span class="${it.ok?"ok":"no"}">${it.n}</span>${issuePill(it)}</li>`).join("")}</ul></div>`).join("");
+ rail.querySelectorAll("li").forEach(li=>li.onclick=()=>{
+  rail.querySelectorAll("li").forEach(x=>x.classList.remove("sel"));li.classList.add("sel");
+  showItem(rep,+li.dataset.c,+li.dataset.i,detailId)});
+ // open first item with an issue
+ let fc=0,fi=0;if(firstIssue)rep.cats.some((c,ci)=>c.items.some((it,ii)=>{if(!it.ok){fc=ci;fi=ii;return true}}));
+ rail.querySelectorAll("li").forEach(x=>x.classList.toggle("sel",+x.dataset.c===fc&&+x.dataset.i===fi));
+ rail.querySelectorAll(".cat")[fc].classList.add("open");
+ showItem(rep,fc,fi,detailId);
+}
+function showItem(rep,ci,ii,detailId){
+ const c=rep.cats[ci],it=c.items[ii],total=rep.cats.reduce((s,c)=>s+c.items.reduce((a,b)=>a+(b.issues||0),0),0);
+ let h=`<div class="head"><h2 style="text-transform:uppercase;letter-spacing:.5px;font-size:20px">${c.name}</h2><span class="pill" style="padding:8px 14px">${total} issues found</span></div><div class="inner">
+ <div class="row between"><h3 style="font-size:18px;margin:0">${it.title}</h3>${issuePill(it)}</div><p>${it.body||""}</p>`;
+ if(it.bar!=null)h+=`<div style="margin:16px 0"><div class="bar"><i style="width:${it.bar}%"></i></div><div class="row between small" style="margin-top:6px"><span style="color:var(--good)">${it.bar}% read by the ATS</span><span style="color:var(--bad)">${100-it.bar}% missed</span></div></div>`;
+ if(it.before)h+=`<div class="ba"><div class="before"><h4>Now</h4>${it.before}</div><div class="after"><h4>Suggested</h4>${it.after}</div></div>
+  <div class="row" style="margin-top:14px"><button class="btn sm" onclick="toast('Fix applied to your base resume')">Apply fix</button><button class="btn ghost sm" onclick="toast('Skipped')">Keep mine</button></div>`;
+ if(it.evidence)h+=`<p class="small muted">Each requirement from the job description, matched to a line in your resume.</p><table class="evid"><tr><th>Job asks for</th><th>Your evidence</th><th></th></tr>${EVID.map(e=>`<tr><td>${e[0]}</td><td>${e[1]}</td><td><span class="pill ${e[2]}">${e[2]==="good"?"Met":"Gap"}</span></td></tr>`).join("")}</table>`;
+ if(it.gaps)h+=`<div class="row" style="margin-top:6px">${it.gaps.map(g=>`<span class="pill bad">${g}</span>`).join("")}</div><p class="small muted">Jobber won't add these to your resume. If you have related experience, tell it and it will use your words.</p>`;
+ h+=`</div>`;
+ document.getElementById(detailId).innerHTML=h;
+}
+
+function renderJobs(){
+ document.getElementById("jobList").innerHTML=JOBS.map(j=>{
+  const col=j.m>=80?"var(--good)":j.m>=65?"var(--warn)":"var(--bad)";
+  return `<div class="job" onclick="openJob('${j.id}')">
+   <div class="ring" style="--p:${j.m};--c:${col}"><span>${j.m}</span></div>
+   <div><h3>${j.t}</h3><div class="muted small">${j.co} · ${j.loc} · posted ${j.age===0?"today":j.age+"d ago"} · via ${j.src}</div>
+    <div class="small" style="margin-top:6px">${j.why.slice(0,2).join(" · ")}</div></div>
+   <div class="right row" style="justify-content:flex-end"><span class="pill ${j.el==="Eligible"?"good":"warn"}">${j.el}</span>
+    <span class="pill ${j.c==="High"?"good":j.c==="Medium"?"warn":"bad"}">Interview: ${j.c} ${j.cp}%</span></div></div>`}).join("");
+}
+function openJob(id){cur=JOBS.find(j=>j.id===id);location.hash="match"}
+
+const BASE={summary:"Product Manager with 6+ years building B2C, e-commerce, and enterprise AI products, from consumer apps and subscription models to AI companions and production LLM agents with evals and guardrails. Experienced in taking products from 0-to-1 and scaling them, turning manual, high-friction workflows into measurable gains in growth, retention, and cost.",
+ prez:["Owned the AI agent strategy for Services teams, built 3 AI-powered agents on a shared platform using Claude Code with minimal engineering, saving ~270hrs/week ($370K/yr), absorbing volume growth without new hires","Identified pharma deck review as the services delivery bottleneck and built multimodal agents that learn from reviewer feedback, cutting review time from 3 hrs to <30 min per deck","Shipped a visual-asset agent that finds and ranks licensed images for every biopharma slide and learns designer taste, cutting asset search from ~1 hr to <15 min per deck","Led a team of 2 to ship a RAG and text-to-SQL AI assistant for the product team, giving self-serve answers to data questions and cutting ad-hoc requests by 50% and release-note effort by 90%"]};
+const TAIL={summary:"Product Manager with 6+ years across consumer apps and enterprise AI. Most recently I took <mark>three production AI agents</mark> into production at Prezent.ai, with <mark>evals and guardrails</mark> built in, saving Services teams about 270 hours a week. Before that I grew consumer subscription apps, including a 0 to 1 health app that reached 60K downloads.",
+ prez:["Owned <mark>AI agent strategy</mark> for Services teams and built 3 agents on a shared platform with Claude Code, saving ~270 hrs/week ($370K/yr) without new hires","Built multimodal agents that <mark>learn from reviewer feedback</mark> for pharma deck review, the main delivery bottleneck, cutting review time from 3 hrs to under 30 min per deck","Led a team of 2 to ship a <mark>RAG and text-to-SQL assistant</mark>, cutting ad-hoc data requests by 50% and release-note effort by 90%","Shipped a visual-asset agent that ranks licensed images per slide and learns designer taste, cutting asset search from ~1 hr to under 15 min per deck"]};
+let showOrig=false;
+function renderDoc(){
+ const d=showOrig?BASE:TAIL;
+ document.getElementById("doc").innerHTML=`<div style="text-align:center"><b style="font-size:18px">Rishabh Sipani</b><br>AI Product Manager<br><span class="muted">rishabh151096@gmail.com | +91-7439302713 | Bengaluru, India | linkedin.com/in/rishabh-sipani-1510rs</span></div>
+ <h4>SUMMARY</h4><p style="margin:0">${d.summary}</p>
+ <h4>EXPERIENCE</h4><b>AI Product Manager, Prezent.ai</b><br><span class="muted">Los Altos, California (Remote) | 04/2026 - Present</span><ul>${d.prez.map(b=>`<li>${b}</li>`).join("")}</ul>
+ <b>Product Manager, JetSynthesys</b><br><span class="muted">Pune, India | 09/2023 - 04/2026</span><ul><li>Launched Inner Avatars, <mark>AI-powered guide personas</mark> on Thinkright.me (5M+ installs), reaching 18% of MAU in 3 months and lifting D30 retention by 22%</li><li>Promoted from Sr. Product Analyst to PM and led the launch of RightLife.ai, a consumer health app, to 60K+ downloads and ~INR 22L ARR in year 1</li><li>Doubled RightLife's activation to 40% by redesigning onboarding to reach a first personalised plan faster</li></ul>
+ <p class="muted" style="text-align:center;margin:14px 0 0">… Spinny, EXL, Education, Skills …</p>`;
+ document.getElementById("tgl").textContent=showOrig?"Show tailored":"Show original";
+}
+function toggleDoc(){showOrig=!showOrig;renderDoc()}
+
+function renderApply(){
+ document.getElementById("applyTitle").textContent=`Apply · ${cur.co}, ${cur.t}`;
+ const A=[["Why this company?",`I've spent this year building AI agents that people use every day, and ${cur.co} is building where that work goes next. I'd like to work on it from the product side.`],
+  ["Why this role?","It sits where my last two jobs meet: shipping LLM agents with evals in production, and growing consumer products where activation and retention decide everything."],
+  ["Cover note (120 words)","Hi team, I'm a product manager in Bengaluru with 6+ years across consumer apps and enterprise AI. At Prezent.ai I built three AI agents for Services teams that now save about 270 hours a week, with evals and reviewer feedback loops so quality holds up. Before that I took RightLife.ai from zero to 60K downloads and doubled its activation by rebuilding onboarding. I like problems where the model is only half the work and the rest is workflow, trust and measurement. I'd be glad to talk about how I could help here. Thanks, Rishabh"],
+  ["Notice period · salary","Notice: 60 days (from your profile) · Expected: from your profile, not shared until asked"]];
+ document.getElementById("answers").innerHTML=A.map(a=>`<div class="card"><div class="row between"><h3 style="margin:0">${a[0]}</h3><button class="btn ghost sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.closest('.card').querySelector('p').innerText);toast('Copied')">Copy</button></div><p style="margin:8px 0 0">${a[1]}</p></div>`).join("");
+}
+
+let TRACK=[
+ {d:"2026-11-10",co:"Glean",r:"Product Manager, AI Agents",l:"Bengaluru",m:79,c:"Medium 48%",s:"Intro Call Done"},
+ {d:"2026-11-12",co:"Groww",r:"Senior Product Manager",l:"Bengaluru",m:73,c:"Medium 41%",s:"Applied"},
+ {d:"2026-11-14",co:"Notion",r:"Product Manager, AI",l:"Remote · APAC",m:68,c:"Low 28%",s:"Rejected"},
+ {d:"2026-11-15",co:"Meesho",r:"Product Manager II",l:"Bengaluru",m:82,c:"High 57%",s:"Interview Scheduled"}];
+function renderTracker(){
+ document.getElementById("stats").innerHTML=STATUSES.map(s=>`<div class="stat"><b>${TRACK.filter(t=>t.s===s).length}</b><span class="small muted">${s}</span></div>`).join("");
+ document.getElementById("trackTable").innerHTML=`<tr><th>Date</th><th>Company</th><th>Role</th><th>Location</th><th>Match</th><th>Interview chance</th><th>Status</th><th>Notes</th></tr>`+
+  TRACK.map((t,i)=>`<tr><td>${t.d}</td><td><b>${t.co}</b></td><td>${t.r}</td><td>${t.l}</td><td>${t.m}</td><td>${t.c}</td>
+  <td><select onchange="TRACK[${i}].s=this.value;renderTracker()">${STATUSES.map(s=>`<option ${s===t.s?"selected":""}>${s}</option>`).join("")}</select></td>
+  <td><input placeholder="Add a note" style="padding:5px 8px;font-size:13px"></td></tr>`).join("");
+}
+function submitted(){
+ if(!TRACK.some(t=>t.co===cur.co))TRACK.unshift({d:"2026-11-18",co:cur.co,r:cur.t,l:cur.loc,m:cur.m,c:`${cur.c} ${cur.cp}%`,s:"Applied"});
+ location.hash="tracker";toast("Added to your tracker");
+}
+function exportCSV(){
+ const rows=[["Date","Company","Role","Location","Match","Interview chance","Status"],...TRACK.map(t=>[t.d,t.co,t.r,t.l,t.m,t.c,t.s])];
+ const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="jobber-applications.csv";a.click();
+}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";clearTimeout(t._t);t._t=setTimeout(()=>t.style.display="none",1800)}
+
+// ---------- router ----------
+const ORDER=["resume","report","jobs","match","tailor","apply","tracker"];
+function route(){
+ const id=(location.hash||"#home").slice(1);
+ document.querySelectorAll("section.screen").forEach(s=>s.classList.toggle("on",s.id==="s-"+id));
+ document.getElementById("steps").style.display=["home","setup"].includes(id)?"none":"flex";
+ document.querySelectorAll("nav.steps a").forEach((a,i)=>{a.classList.toggle("on",ORDER[i]===id);a.classList.toggle("done",i<ORDER.indexOf(id))});
+ if(id==="report")renderReport(REPORT,"reportRail","reportDetail",`<a class="btn" style="display:block;text-decoration:none;text-align:center" href="#jobs">Find jobs for me</a>`);
+ if(id==="jobs")renderJobs();
+ if(id==="match")renderReport(matchReport(cur),"matchRail","matchDetail",`<div class="small muted" style="text-align:center;margin-bottom:8px">${cur.co} · ${cur.t}</div><a class="btn" style="display:block;text-decoration:none;text-align:center" href="#tailor">Tailor my resume</a>`,false);
+ if(id==="tailor"){document.getElementById("tailorTitle").textContent=`Tailored for ${cur.co}`;renderDoc()}
+ if(id==="apply")renderApply();
+ if(id==="tracker")renderTracker();
+ window.scrollTo(0,0);
+}
+addEventListener("hashchange",route);route();
+</script>
+</body>
+</html>
