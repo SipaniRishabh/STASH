@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-export const STATUSES = ["Applied", "Intro Call Done", "Interview Scheduled", "Passed", "Rejected", "Ghosted"];
+export const STATUSES = ["Planning to apply", "Applied", "Intro Call Done", "Interview Scheduled", "Passed", "Rejected", "Ghosted", "Not applying"];
 const COLS = ["Date", "Company", "Role", "Location", "Match", "Interview chance", "Status", "Notes", "URL"];
 
-export default function Tracker({ tracker, setTracker }) {
+export default function Tracker({ tracker, setTracker, matches, setCurrent }) {
   const [draft, setDraft] = useState({ company: "", role: "", url: "" });
   const update = (i, k, v) => setTracker(tracker.map((t, j) => (j === i ? { ...t, [k]: v } : t)));
 
@@ -55,7 +55,7 @@ export default function Tracker({ tracker, setTracker }) {
                   <td>{t.date}</td>
                   <td><b>{t.company}</b></td>
                   <td>{/^https?:\/\//.test(t.url) ? <a href={t.url} target="_blank" rel="noopener noreferrer">{t.role}</a> : t.role}</td>
-                  <td>{t.match}</td>
+                  <td>{t.jobId && matches[t.jobId] ? <button className="linkbtn" title="Open match report" onClick={() => { setCurrent(matches[t.jobId].job); location.hash = "match"; }}>{t.match}</button> : t.match}</td>
                   <td>{t.chance}</td>
                   <td>
                     <select value={t.status} onChange={(e) => update(i, "status", e.target.value)} aria-label={`Status for ${t.company}`}>

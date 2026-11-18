@@ -61,11 +61,13 @@ Flow: Landing → Connect key → Resume → Resume report → Jobs → Match re
 | F6 | **Job feed** | Greenhouse, Lever, Ashby, Himalayas, Remotive; ≤ 60 days old; title filter; eligibility check (worldwide / region OK / not eligible / verify); de-duplicated; cached server-side 1 hr |
 | F7 | **Ghost and scam signals** | Each job carries flags: posted > 30 days, link closed, no salary or vague JD, asks for payment or personal-email contact. Flagged jobs ranked lower, never hidden silently |
 | F8 | **Paste a JD** | Paste text from LinkedIn/Naukri/anywhere + optional URL; same checks as feed (warnings, not blocks) |
-| F9 | **Match report** | Match score (rubric: must-haves 35, seniority 20, domain 20, skills 15, location 10), interview chance (Low/Med/High + % with stated adjustments), requirement ↔ evidence table, gaps |
+| F9 | **Match report** | Match score (rubric: must-haves 35, seniority 20, domain 20, skills 15, location 10), interview chance (Low/Med/High + % with stated adjustments), requirement ↔ evidence table with the source of each piece of evidence (experience, Skills section, implied PM practice, added by user), gaps |
+| F9b | **Implied PM skills** | Ruleset (`src/lib/pmskills.js`) of everyday PM practice by years in PM/APM roles (0+, 2+, 4+, 7+) plus practices signalled by the kind of work (A/B testing, SQL, ML teams, payments, growth). Sent with every scoring call; counts toward the score only, never written into a tailored resume. Never satisfies hard requirements (degrees, years, named tools, domains) |
+| F9c | **User-added evidence** | "I have this" on any gap or partial row; user writes where/how in their own words. Saved with the resume and used for every job. Pending additions show a banner telling the user to add everything, then re-score once (one Claude call) |
 | F10 | **Tailored resume** | Highlighted diff vs original; checks: no invented facts, human voice, ATS parse, keyword coverage, 1 page; user can request changes; export .docx + .pdf, no Jobber branding |
 | F11 | **Cover note + form answers** | Why company, why role, 120-word cover note, notice/salary from profile; copy buttons; human-voice lint |
-| F12 | **Assisted apply** | "Open job page", user confirms "I've submitted", only then logged |
-| F13 | **Tracker** | Table with status (Applied, Intro Call Done, Interview Scheduled, Passed, Rejected, Ghosted), notes, counts per status; export CSV and Excel |
+| F12 | **Assisted apply** | Jobber never submits. User marks "I'm going to apply" (tracker: Planning to apply), "Not applying" with optional reason, or "I've submitted" (confirm dialog, tracker: Applied). One tracker row per job, updated in place |
+| F13 | **Tracker** | Table with status (Planning to apply, Applied, Intro Call Done, Interview Scheduled, Passed, Rejected, Ghosted, Not applying), notes, counts per status, match score links back to the job's match report; export CSV (opens in Excel) |
 | F14 | **Responsive** | Usable on phone and tablet widths |
 
 ## 6. Prioritisation of competitor features
@@ -121,7 +123,8 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 - **Server:** one route, `/api/jobs`, fetches public job boards and caches for 1 hour. Never sees the key or resume.
 - **Models:** Claude Opus 5.5 (`claude-opus-5-5`) for reading resumes, scoring and tailoring, with server-side refusal fallbacks on.
   Effort `medium` for reading, `low` for single-line fixes. Cheaper models (Sonnet/Haiku) can be swapped in per call if cost per user matters.
-- **Code:** `web/app` (Vite + React). Build 1 screens: Landing, Connect key, Resume, Resume report, Tracker. Jobs, Match, Tailor, Apply show "coming in build 2/3".
+- **Code:** `web/app` (Vite + React). Built: every screen (Landing, Connect key, Resume, Resume report, Jobs, Match report, Tailor, Apply, Tracker).
+  `/api/jobs` lives in `web/app/api/jobs.js` (Vercel function, CDN-cached 1 hr via `s-maxage`); `vite.config.js` mounts the same handler in dev.
 - **Storage:** localStorage / IndexedDB in the browser.
 - **Documents:** .docx built in browser; PDF via print-ready resume page.
 
@@ -162,3 +165,19 @@ Decided:
   Local CLI resume export switched to the compact one-page layout with a page-count check.
 - **2026-11-18:** Added Google Docs link import (F2b), "How this report is judged" panel (F4b), interview-readiness story review
   with a separate Story strength score (F4c), and Copy / Open my doc on every fix (F4d). Documented role coverage (6b).
+- **2026-11-18:** Build 2: Jobs (F6, F7, F8) and Match report (F9). `/api/jobs` pulls the 21 Greenhouse/Lever/Ashby boards plus
+  Himalayas and Remotive searches for each target title, keeps title matches inside the freshness window, de-duplicates, caches 1 hr.
+  Eligibility (open to you / check / not open) and ghost/scam flags (age, no salary, short JD, fee or personal-email contact,
+  deal-breakers) run in the browser from the user's markets and home country; flagged jobs rank lower, never hidden. Jobs are sorted by
+  a quick resume-skill overlap until scored. Claude scores only the job the user opens (cost control): rubric parts with evidence,
+  requirement-to-resume table, gaps, 8-15 ATS keywords. Interview chance is computed in code from the match score with the stated
+  adjustments, plus a "I have a referral" toggle (+15). Pasted JDs get the same report and a "date unknown" warning.
+  Not yet: live "link closed" check (F7) and demo-mode sample match (demo scores need a key).
+- **2026-11-18:** Build 3. Implied PM skills ruleset (F9b) so everyday practice (PRDs, cross-functional work, A/B testing when the
+  work shows it) isn't marked a gap; evidence rows now say where the evidence came from. Users can add their own evidence to any gap
+  (F9c) and re-score once after all edits. Tailor (F10): Claude reorders and rewords from the resume and the user's added evidence
+  only; deterministic checks for invented numbers, changed employers/titles/dates, human voice, keyword coverage (stem match) and
+  one-page length (~600 words, a proxy); changed lines highlighted; revise with one request; export .docx (`docx` library, lazy-loaded,
+  single column, standard headings) and PDF via the browser's print dialog. Apply (F11, F12): optional "why company / why role"
+  answers and a cover note under 120 words with copy buttons and a wording check; decision buttons log to the tracker. Tracker
+  gains Planning to apply and Not applying statuses. Excel export stays CSV.

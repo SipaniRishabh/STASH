@@ -5,6 +5,10 @@ import { go } from "./ui.jsx";
 import Resume from "./screens/Resume.jsx";
 import Report from "./screens/Report.jsx";
 import Tracker from "./screens/Tracker.jsx";
+import Jobs from "./screens/Jobs.jsx";
+import Match from "./screens/Match.jsx";
+import Tailor from "./screens/Tailor.jsx";
+import Apply from "./screens/Apply.jsx";
 
 const STEPS = [
   ["resume", "Resume"], ["report", "Resume report"], ["jobs", "Jobs"], ["match", "Match report"],
@@ -44,12 +48,17 @@ export default function App() {
   const [realProfile, setRealProfile] = useStored("profile", null);
   const [prefs, setPrefs] = useStored("prefs", DEFAULT_PREFS);
   const [tracker, setTracker] = useStored("tracker", []);
+  const [realMatches, setRealMatches] = useStored("matches", {});
+  const [demoMatches, setDemoMatches] = useState({});
+  const [current, setCurrent] = useStored("current", null);
   const [demo, setDemo] = useState(false); // not persisted: a refresh leaves demo mode
   const [demoProfile, setDemoProfile] = useState(DEMO_PROFILE);
 
   const profile = demo ? demoProfile : realProfile;
   const setProfile = demo ? setDemoProfile : setRealProfile;
-  const ctx = { apiKey, demo, profile, setProfile, prefs, setPrefs, tracker, setTracker };
+  const matches = demo ? demoMatches : realMatches;
+  const setMatches = demo ? setDemoMatches : setRealMatches;
+  const ctx = { apiKey, demo, profile, setProfile, prefs, setPrefs, tracker, setTracker, matches, setMatches, current, setCurrent };
 
   const startDemo = () => {
     setDemo(true);
@@ -85,10 +94,10 @@ export default function App() {
       {route === "setup" && <Setup apiKey={apiKey} setApiKey={setApiKey} startDemo={startDemo} />}
       {route === "resume" && <Resume {...ctx} />}
       {route === "report" && <Report {...ctx} />}
-      {route === "jobs" && <Soon title="Jobs for you" build={2} text="Fresh roles from Greenhouse, Lever, Ashby, Himalayas and Remotive, filtered to your preferences and the last 60 days, plus a box to paste any job from LinkedIn or Naukri." />}
-      {route === "match" && <Soon title="Match report" build={2} text="Match score with evidence for every requirement, an interview-chance estimate, and honest gaps." />}
-      {route === "tailor" && <Soon title="Tailored resume" build={3} text="A compact one-page rewrite for each job, with every change highlighted and Word and PDF downloads." />}
-      {route === "apply" && <Soon title="Apply" build={3} text="Drafted answers and a cover note, then a one-click log to your tracker once you submit." />}
+      {route === "jobs" && <Jobs {...ctx} />}
+      {route === "match" && <Match {...ctx} />}
+      {route === "tailor" && <Tailor {...ctx} />}
+      {route === "apply" && <Apply {...ctx} />}
       {route === "tracker" && <Tracker {...ctx} />}
     </div>
   );
@@ -157,17 +166,6 @@ function Setup({ apiKey, setApiKey, startDemo }) {
         </ul>
         <div className="note" style={{ marginTop: 14 }}>Jobber loads no third-party scripts and shows job and AI text as plain text only, so nothing on the page can read your key.</div>
       </div>
-    </div>
-  );
-}
-
-function Soon({ title, build, text }) {
-  return (
-    <div className="card" style={{ maxWidth: 640 }}>
-      <span className="pill blue">Coming in build {build}</span>
-      <h2 style={{ marginTop: 10 }}>{title}</h2>
-      <p className="sub">{text}</p>
-      <a className="btn ghost" href="#report" style={{ textDecoration: "none" }}>Back to resume report</a>
     </div>
   );
 }
