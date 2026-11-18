@@ -21,7 +21,9 @@ export default function Apply({ apiKey, profile, current, matches, setMatches, t
     );
   }
 
-  const { job, result, cover } = saved;
+  const { job, cover } = saved;
+  // The latest score: the tailored resume's if it has been scored, since that's the version being sent.
+  const result = saved.tailoredScore?.result || saved.result;
   const c = chance(result, job, saved.referral);
   const row = tracker.find((t) => t.jobId === job.id);
   const today = new Date().toISOString().slice(0, 10);

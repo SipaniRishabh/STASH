@@ -4,30 +4,49 @@ import { Err, Gauge, Spinner } from "../ui.jsx";
 
 const STATUS = { met: ["good", "Met"], partial: ["warn", "Partial"], gap: ["bad", "Gap"] };
 
+/**
+ * Score a job against the original resume ("original") or this job's tailored resume ("tailored").
+ * Runs as an app-level task, so it keeps going if the user leaves the step. Shared with the Tailor screen.
+ */
+export function scoreTask(which, job0, { apiKey, profile, prefs, matches, setMatches, runTask }) {
+  const tailored = matches[job0.id]?.tailored;
+  const resume = which === "tailored" ? tailored.resume : profile.resume;
+  const key = which === "tailored" ? `score-tailored:${job0.id}` : `score:${job0.id}`;
+  const label = `Scoring ${which === "tailored" ? "tailored resume for " : ""}${job0.company || "job"}`;
+  runTask(key, label, async () => {
+    const { scoreJob } = await import("../lib/claude.js");
+    const result = await scoreJob(apiKey, resume, job0, prefs, profile.evidence || []);
+    if (which === "tailored") {
+      setMatches((m) => ({ ...m, [job0.id]: { ...m[job0.id], tailoredScore: { result, at: Date.now(), tailoredAt: tailored.at } } }));
+      return;
+    }
+    // Pasted jobs get their title/company from Claude's read of the text.
+    const job = job0.source === "Pasted" ? { ...job0, title: result.job_title || "Pasted job", company: result.company, location: result.location } : job0;
+    setMatches((m) => ({ ...m, [job0.id]: { ...m[job0.id], job, result, referral: m[job0.id]?.referral || false, scoredAt: Date.now() } }));
+  });
+}
+
 const SOURCE = { experience: "From your experience", skills: "From your Skills section", implied: "Implied by your PM years", you: "Added by you" };
 
 export default function Match({ apiKey, profile, setProfile, prefs, current, matches, setMatches, tasks, runTask }) {
   const saved = current && matches[current.id];
+  const ts = saved?.tailoredScore;
+  const [pick, setPick] = useState(null); // "original" | "tailored"; defaults to tailored once it's scored
+  const view = pick || (ts ? "tailored" : "original");
   const task = current && tasks[`score:${current.id}`];
-  const busy = !!task?.running;
-  const err = task?.error || "";
+  const tTask = current && tasks[`score-tailored:${current.id}`];
+  const viewTask = view === "tailored" ? tTask : task;
+  const busy = !!viewTask?.running;
+  const err = viewTask?.error || "";
   const [editing, setEditing] = useState(null); // requirement text being edited
   const [draft, setDraft] = useState("");
   const evidence = profile?.evidence || [];
 
-  function run() {
-    const job0 = current;
-    runTask(`score:${job0.id}`, `Scoring ${job0.company || "job"}`, async () => {
-      const current = job0;
-      const { scoreJob } = await import("../lib/claude.js");
-      const result = await scoreJob(apiKey, profile.resume, current, prefs, evidence);
-      // Pasted jobs get their title/company from Claude's read of the text.
-      const job = current.source === "Pasted"
-        ? { ...current, title: result.job_title || "Pasted job", company: result.company, location: result.location }
-        : current;
-      setMatches((m) => ({ ...m, [current.id]: { ...m[current.id], job, result, referral: m[current.id]?.referral || false, scoredAt: Date.now() } }));
-    });
-  }
+  const ctx = { apiKey, profile, prefs, matches, setMatches, runTask };
+  const run = (which = "original") => {
+    if (which === "tailored") setPick("tailored");
+    scoreTask(which, current, ctx);
+  };
 
   useEffect(() => {
     if (current && profile && apiKey && !saved && !task) run();
@@ -82,14 +101,15 @@ export default function Match({ apiKey, profile, setProfile, prefs, current, mat
     );
   }
 
-  const r = saved.result;
+  const r = view === "tailored" ? ts.result : saved.result;
   const c = chance(r, job, saved.referral);
+  const tailoredFresh = ts && saved.tailored && ts.tailoredAt === saved.tailored.at;
   const [ecls, elabel] = ELIG[r.eligibility];
   const setReferral = (v) => setMatches((m) => ({ ...m, [current.id]: { ...saved, referral: v } }));
   const met = r.requirements.filter((x) => x.status === "met").length;
   const jobFlags = flags(job, prefs);
   // Evidence added after this job was last scored: shown on the row, counted toward the re-score prompt.
-  const pending = evidence.filter((e) => e.at > (saved.scoredAt || 0));
+  const pending = evidence.filter((e) => e.at > ((view === "tailored" ? ts.at : saved.scoredAt) || 0));
   const pendingFor = (req) => pending.find((e) => e.requirement === req);
 
   function addEvidence(requirement) {
@@ -101,12 +121,26 @@ export default function Match({ apiKey, profile, setProfile, prefs, current, mat
   }
   const removeEvidence = (requirement) => setProfile({ ...profile, evidence: evidence.filter((e) => e.requirement !== requirement) });
 
+  const scoreOfR = (res) => chance(res, job, saved.referral).match;
   return (
     <>
       {header}
+      {saved.tailored && !tailoredFresh && (
+        <div className="note row between" style={{ marginBottom: 16 }}>
+          <span>{ts ? "Your tailored resume changed since it was scored." : "You have a tailored resume for this job."} See how it scores against this job: one Claude call on your key (about $0.10).</span>
+          <button className="btn sm" onClick={() => run("tailored")} disabled={!!tTask?.running}>{tTask?.running ? <><Spinner /> Scoring…</> : "Re-score with tailored resume"}</button>
+        </div>
+      )}
+      {ts && (
+        <div className="filters" role="tablist" aria-label="Which resume">
+          {[["original", "Original resume", saved.result], ["tailored", "Tailored resume", ts.result]].map(([k, label, res]) => (
+            <button key={k} role="tab" aria-selected={view === k} className={`btn sm ${view === k ? "" : "ghost"}`} onClick={() => setPick(k)}>{label} · {scoreOfR(res)}</button>
+          ))}
+        </div>
+      )}
       <div className="report">
         <div className="card rail">
-          <Gauge score={c.match} label="Match">
+          <Gauge score={c.match} label={view === "tailored" ? "Match (tailored)" : "Match"}>
             <div style={{ marginTop: 8 }}>
               <span className={`pill ${c.level === "High" ? "good" : c.level === "Medium" ? "warn" : "bad"}`}>Interview chance: {c.level} · {c.pct}%</span>
             </div>
@@ -121,7 +155,7 @@ export default function Match({ apiKey, profile, setProfile, prefs, current, mat
             I have a referral at this company
           </label>
           <a className="btn" href="#tailor" style={{ display: "block", textAlign: "center", textDecoration: "none", marginTop: 14 }}>Tailor my resume for this job</a>
-          <button className="linkbtn small" style={{ display: "block", margin: "10px auto 0" }} onClick={run} disabled={busy}>{busy ? "Re-scoring…" : "Score again"}</button>
+          <button className="linkbtn small" style={{ display: "block", margin: "10px auto 0" }} onClick={() => run(view)} disabled={busy}>{busy ? "Re-scoring…" : "Score again"}</button>
         </div>
 
         <div className="detail">
@@ -148,7 +182,7 @@ export default function Match({ apiKey, profile, setProfile, prefs, current, mat
                   You've added {pending.length} piece{pending.length > 1 ? "s" : ""} of evidence since this score. Add everything you want first,
                   then re-score once: each re-score is one Claude call on your key (about $0.10).
                 </span>
-                <button className="btn sm" onClick={run} disabled={busy}>{busy ? <><Spinner /> Re-scoring…</> : "Re-score with my updates"}</button>
+                <button className="btn sm" onClick={() => run(view)} disabled={busy}>{busy ? <><Spinner /> Re-scoring…</> : "Re-score with my updates"}</button>
               </div>
             )}
             <table className="evid">
