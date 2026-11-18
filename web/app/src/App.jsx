@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStored, forgetEverything } from "./lib/store.js";
 import { DEMO_RESUME, DEMO_RAW_TEXT, DEMO_PAGES, DEMO_UNDERSTANDING, DEMO_LANGUAGE } from "./demo.js";
 import { go } from "./ui.jsx";
@@ -51,6 +51,30 @@ export default function App() {
   const [realMatches, setRealMatches] = useStored("matches", {});
   const [demoMatches, setDemoMatches] = useState({});
   const [current, setCurrent] = useStored("current", null);
+  // Claude calls run here, not in the screen, so they keep going when the user moves between steps.
+  // They stop only if the tab is closed or reloaded (the key never goes to a server, so there is no server-side job).
+  const [tasks, setTasks] = useState({}); // key -> { label, running } | { label, error }
+  const live = useRef(new Set());
+  async function runTask(key, label, fn) {
+    if (live.current.has(key)) return;
+    live.current.add(key);
+    setTasks((t) => ({ ...t, [key]: { label, running: true } }));
+    try {
+      await fn();
+      setTasks(({ [key]: _, ...t }) => t);
+    } catch (e) {
+      setTasks((t) => ({ ...t, [key]: { label, error: e.message || String(e) } }));
+    } finally {
+      live.current.delete(key);
+    }
+  }
+  const running = Object.values(tasks).filter((t) => t.running);
+  useEffect(() => {
+    if (!running.length) return;
+    const warn = (e) => e.preventDefault();
+    addEventListener("beforeunload", warn);
+    return () => removeEventListener("beforeunload", warn);
+  }, [running.length]);
   const [demo, setDemo] = useState(false); // not persisted: a refresh leaves demo mode
   const [demoProfile, setDemoProfile] = useState(DEMO_PROFILE);
 
@@ -58,7 +82,7 @@ export default function App() {
   const setProfile = demo ? setDemoProfile : setRealProfile;
   const matches = demo ? demoMatches : realMatches;
   const setMatches = demo ? setDemoMatches : setRealMatches;
-  const ctx = { apiKey, demo, profile, setProfile, prefs, setPrefs, tracker, setTracker, matches, setMatches, current, setCurrent };
+  const ctx = { apiKey, demo, profile, setProfile, prefs, setPrefs, tracker, setTracker, matches, setMatches, current, setCurrent, tasks, runTask };
 
   const startDemo = () => {
     setDemo(true);
@@ -72,6 +96,9 @@ export default function App() {
       <header className="top">
         <a className="brand" href="#home"><i />JOBBER</a>
         <div className="row">
+          {running.length > 0 && (
+            <span className="keychip" role="status"><span className="spin" aria-hidden="true" />{running.map((t) => t.label).join(", ")}… keep this tab open</span>
+          )}
           {demo ? (
             <span className="keychip"><span className="dot" style={{ background: "var(--blue)" }} />Demo with a sample resume · <button className="linkbtn" onClick={() => { setDemo(false); go("home"); }}>exit</button></span>
           ) : apiKey ? (

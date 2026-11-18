@@ -4,10 +4,11 @@ import { chance } from "../lib/jobs.js";
 import { CopyBtn, Err, Spinner } from "../ui.jsx";
 
 // Jobber never submits anything. The user applies on the job's own site and tells Jobber what they decided.
-export default function Apply({ apiKey, profile, current, matches, setMatches, tracker, setTracker }) {
+export default function Apply({ apiKey, profile, current, matches, setMatches, tracker, setTracker, tasks, runTask }) {
   const saved = current && matches[current.id];
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  const task = current && tasks[`cover:${current.id}`];
+  const busy = !!task?.running;
+  const err = task?.error || "";
   const [reason, setReason] = useState("");
 
   if (!saved || !profile) {
@@ -34,18 +35,13 @@ export default function Apply({ apiKey, profile, current, matches, setMatches, t
     setTracker(row ? tracker.map((t) => (t === row ? { ...t, ...entry, date: status === "Applied" ? today : t.date } : t)) : [entry, ...tracker]);
   }
 
-  async function draft() {
-    setBusy(true);
-    setErr("");
-    try {
+  function draft() {
+    const id = current.id;
+    runTask(`cover:${id}`, `Drafting cover note for ${job.company}`, async () => {
       const { coverNote } = await import("../lib/claude.js");
       const out = await coverNote(apiKey, saved.tailored?.resume || profile.resume, job, result);
-      setMatches((m) => ({ ...m, [current.id]: { ...m[current.id], cover: out } }));
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+      setMatches((m) => ({ ...m, [id]: { ...m[id], cover: out } }));
+    });
   }
 
   const flagged = (s) => BANNED.filter((w) => s.toLowerCase().includes(w)).concat(/[—–]/.test(s) ? ["dash"] : []);

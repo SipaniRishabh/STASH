@@ -4,10 +4,12 @@ import { Err, Spinner } from "../ui.jsx";
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-export default function Tailor({ apiKey, profile, current, matches, setMatches }) {
+export default function Tailor({ apiKey, profile, current, matches, setMatches, tasks, runTask }) {
   const saved = current && matches[current.id];
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  const task = current && tasks[`tailor:${current.id}`];
+  const busy = !!task?.running;
+  const [exportErr, setErr] = useState("");
+  const err = task?.error || exportErr;
   const [request, setRequest] = useState("");
   const [showDiff, setShowDiff] = useState(true);
   const t = saved?.tailored;
@@ -30,19 +32,15 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches }
 
   const { job, result } = saved;
 
-  async function run(revise) {
-    setBusy(true);
-    setErr("");
-    try {
+  function run(revise) {
+    const id = current.id;
+    const ask = revise ? request : "";
+    runTask(`tailor:${id}`, revise ? `Revising resume for ${job.company}` : `Tailoring resume for ${job.company}`, async () => {
       const { tailorResume } = await import("../lib/claude.js");
-      const out = await tailorResume(apiKey, profile.resume, job, result, evidence, revise ? request : "", revise ? t.resume : null);
-      setMatches((m) => ({ ...m, [current.id]: { ...m[current.id], tailored: { ...out, at: Date.now() } } }));
-      setRequest("");
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+      const out = await tailorResume(apiKey, profile.resume, job, result, evidence, ask, revise ? t.resume : null);
+      setMatches((m) => ({ ...m, [id]: { ...m[id], tailored: { ...out, at: Date.now() } } }));
+    });
+    setRequest("");
   }
 
   async function exportDocx() {

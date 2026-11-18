@@ -6,18 +6,19 @@ const STATUS = { met: ["good", "Met"], partial: ["warn", "Partial"], gap: ["bad"
 
 const SOURCE = { experience: "From your experience", skills: "From your Skills section", implied: "Implied by your PM years", you: "Added by you" };
 
-export default function Match({ apiKey, profile, setProfile, prefs, current, matches, setMatches }) {
+export default function Match({ apiKey, profile, setProfile, prefs, current, matches, setMatches, tasks, runTask }) {
   const saved = current && matches[current.id];
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  const task = current && tasks[`score:${current.id}`];
+  const busy = !!task?.running;
+  const err = task?.error || "";
   const [editing, setEditing] = useState(null); // requirement text being edited
   const [draft, setDraft] = useState("");
   const evidence = profile?.evidence || [];
 
-  async function run() {
-    setBusy(true);
-    setErr("");
-    try {
+  function run() {
+    const job0 = current;
+    runTask(`score:${job0.id}`, `Scoring ${job0.company || "job"}`, async () => {
+      const current = job0;
       const { scoreJob } = await import("../lib/claude.js");
       const result = await scoreJob(apiKey, profile.resume, current, prefs, evidence);
       // Pasted jobs get their title/company from Claude's read of the text.
@@ -25,15 +26,11 @@ export default function Match({ apiKey, profile, setProfile, prefs, current, mat
         ? { ...current, title: result.job_title || "Pasted job", company: result.company, location: result.location }
         : current;
       setMatches((m) => ({ ...m, [current.id]: { ...m[current.id], job, result, referral: m[current.id]?.referral || false, scoredAt: Date.now() } }));
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   useEffect(() => {
-    if (current && profile && apiKey && !saved && !busy) run();
+    if (current && profile && apiKey && !saved && !task) run();
   }, [current?.id]);
 
   if (!current) {
