@@ -275,7 +275,7 @@ const Tailored = z.object({
 });
 
 /** Tailored one-page resume for one job (F10). Only facts from the resume or the user's own added evidence. */
-export function tailorResume(apiKey, resume, job, match, evidence = [], request = "", previous = null) {
+export function tailorResume(apiKey, resume, job, match, evidence = []) {
   return ask(apiKey, Tailored, [{
     type: "text",
     text: `Original resume (JSON, the only source of facts):\n${JSON.stringify(resume)}
@@ -286,7 +286,6 @@ ${job.description}
 
 Keywords this job looks for: ${match.must_have_keywords.join(", ")}
 Gaps already identified (do NOT paper over these): ${match.gaps.join(", ") || "none"}
-${previous ? `\nYour previous tailored version (JSON):\n${JSON.stringify(previous)}\nThe candidate asked for these changes: ${request}\n` : ""}
 Tailor the resume for this job:
 - Reorder bullets and roles' emphasis, cut what's irrelevant, rephrase to mirror the job's exact terms where they are TRUE for the candidate.
 - Keep the candidate's own phrasing where it already works. Change emphasis and order before changing words.

@@ -9,10 +9,10 @@ const words = (r) => flat(r).split(/\s+/).filter(Boolean).length + r.education.l
 // ponytail: word count as a one-page proxy (~600 words fits the compact layout); a real page measure needs layout.
 export const ONE_PAGE_WORDS = 600;
 
-// Impact numbers: "22%", "1.4M users", "$370K", "40+ A/B tests", "3 hrs", "11% to 17%". Bare years (2019, 2023) stay plain.
-const IMPACT = /(?:(?:[$₹€£]|\b(?:INR|USD|EUR|GBP|Rs\.?)\s?)\s?)?\d[\d,.]*(?:\s?(?:%|\+|x\b|[KMB]\b|k\b|L\b|Cr\b|lakh|crore|mn\b|bn\b))*(?:\s?(?:hrs?|hours?|mins?|minutes?|days?|weeks?|months?|years?|yrs?|users?|customers?|merchants?|clients?|people|members|countries|cities|markets))?/gi;
+// Impact numbers in work-experience bullets: "22%", "1.4M users", "$370K", "40+ A/B tests", "3 hrs", "11% to 17%". Bare years (2019, 2023) and digits inside words (B2C, Web3, Q3) stay plain.
+const IMPACT = /(?<![A-Za-z0-9])(?:(?:[$₹€£]|\b(?:INR|USD|EUR|GBP|Rs\.?)\s?)\s?)?\d[\d,.]*(?:\s?(?:%|\+|x\b|[KMB]\b|k\b|L\b|Cr\b|lakh|crore|mn\b|bn\b))*(?:\s?(?:hrs?|hours?|mins?|minutes?|days?|weeks?|months?|years?|yrs?|users?|customers?|merchants?|clients?|people|members|countries|cities|markets))?(?![A-Za-z])/gi;
 
-/** Split a line into [{ text, bold }] so impact numbers render bold in the preview, PDF and Word file. */
+/** Split a bullet into [{ text, bold }] so impact numbers render bold in the preview, PDF and Word file. */
 export function boldParts(line) {
   const out = [];
   let last = 0;
@@ -57,10 +57,16 @@ export function tailorChecks(original, tailored, keywords, evidence = []) {
 
 /** Single-column .docx with standard headings and contact in the body, for ATS parsing. */
 export async function resumeDocx(r) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Tab, TabStopType } = await import("docx");
+  const RIGHT = 12240 - 800 * 2; // letter width minus side margins, in twips
+  // Left text, dates flush right on the same line (work experience and education alike).
+  const line = (left, right, opts = {}) => new Paragraph({ spacing: { before: 100, after: 20 }, tabStops: [{ type: TabStopType.RIGHT, position: RIGHT }], ...opts, children: [
+    new TextRun({ text: left, font, size: 21, bold: true }),
+    ...(right ? [new TextRun({ children: [new Tab(), right], font, size: 21 })] : []),
+  ] });
   const font = "Calibri";
   const p = (text, opts = {}) => new Paragraph({ spacing: { after: 60 }, ...opts, children: [new TextRun({ text, font, size: 21, ...(opts.run || {}) })] });
-  // Summary and bullets: impact numbers in bold.
+  // Work-experience bullets: impact numbers in bold.
   const pb = (text, opts = {}) => new Paragraph({ spacing: { after: 60 }, ...opts, children: boldParts(text).map((x) => new TextRun({ text: x.text, bold: x.bold, font, size: 21 })) });
   const h = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 60 }, children: [new TextRun({ text: text.toUpperCase(), font, size: 22, bold: true })] });
   const contact = [r.contact.email, r.contact.phone, r.contact.location, r.contact.linkedin].filter(Boolean).join(" | ");
@@ -69,17 +75,14 @@ export async function resumeDocx(r) {
     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: r.name, font, size: 32, bold: true })] }),
     ...(r.headline ? [p(r.headline, { alignment: AlignmentType.CENTER })] : []),
     p(contact, { alignment: AlignmentType.CENTER }),
-    ...(r.summary ? [h("Summary"), pb(r.summary)] : []),
+    ...(r.summary ? [h("Summary"), p(r.summary)] : []),
     h("Experience"),
     ...r.experience.flatMap((e) => [
-      new Paragraph({ spacing: { before: 100, after: 20 }, children: [
-        new TextRun({ text: `${e.title}, ${e.company}`, font, size: 21, bold: true }),
-        new TextRun({ text: `  ${[e.location, e.dates].filter(Boolean).join(" | ")}`, font, size: 21 }),
-      ] }),
+      line(`${e.title}, ${e.company}`, [e.location, e.dates].filter(Boolean).join(" | ")),
       ...(e.blurb ? [p(e.blurb, { run: { italics: true } })] : []),
       ...e.bullets.map((b) => pb(b, { bullet: { level: 0 } })),
     ]),
-    ...(r.education.length ? [h("Education"), ...r.education.map((e) => p(`${e.degree}, ${e.school}${e.dates ? ` | ${e.dates}` : ""}`))] : []),
+    ...(r.education.length ? [h("Education"), ...r.education.map((e) => line(`${e.degree}, ${e.school}`, e.dates, { spacing: { before: 40, after: 20 } }))] : []),
     ...(r.skills.length ? [h("Skills"), ...r.skills.map((s) => p(`${s.label ? `${s.label}: ` : ""}${s.items.join(", ")}`))] : []),
     ...(r.certifications.length ? [h("Certifications"), ...r.certifications.map((c) => p(c))] : []),
   ];
@@ -112,6 +115,7 @@ if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("tailor.js")) 
   eqA(bolded("Saved ~270hrs/week ($370K/yr) and ran 40+ A/B tests"), ["270hrs", "$370K", "40+"]);
   eqA(bolded("Campaign worth INR 40 Cr and Rs. 5 lakh"), ["INR 40 Cr", "Rs. 5 lakh"]);
   eqA(bolded("Raised acceptance from 11% to 17%, cutting review from 3 hrs to 30 min"), ["11%", "17%", "3 hrs", "30 min"]);
+  eqA(bolded("Built B2C and B2B flows on Web3 rails in Q3, 4G only"), []);
   if (boldParts("No numbers here").length !== 1) throw new Error("plain");
   if (boldParts("a 22% b").map((x) => x.text).join("") !== "a 22% b") throw new Error("lossy");
   console.log("tailor.js ok");

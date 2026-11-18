@@ -10,7 +10,6 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
   const busy = !!task?.running;
   const [exportErr, setErr] = useState("");
   const err = task?.error || exportErr;
-  const [request, setRequest] = useState("");
   const [showDiff, setShowDiff] = useState(true);
   const t = saved?.tailored;
   const evidence = profile?.evidence || [];
@@ -32,15 +31,13 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
 
   const { job, result } = saved;
 
-  function run(revise) {
+  function run() {
     const id = current.id;
-    const ask = revise ? request : "";
-    runTask(`tailor:${id}`, revise ? `Revising resume for ${job.company}` : `Tailoring resume for ${job.company}`, async () => {
+    runTask(`tailor:${id}`, `Tailoring resume for ${job.company}`, async () => {
       const { tailorResume } = await import("../lib/claude.js");
-      const out = await tailorResume(apiKey, profile.resume, job, result, evidence, ask, revise ? t.resume : null);
+      const out = await tailorResume(apiKey, profile.resume, job, result, evidence);
       setMatches((m) => ({ ...m, [id]: { ...m[id], tailored: { ...out, at: Date.now() } } }));
     });
-    setRequest("");
   }
 
   async function exportDocx() {
@@ -73,7 +70,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
             cuts it to one page, and highlights every change. Gaps stay gaps. One Claude call on your key, about $0.10 to $0.20.
           </p>
           {apiKey ? (
-            <button className="btn" onClick={() => run(false)} disabled={busy}>{busy ? <><Spinner /> Tailoring, about 40 seconds…</> : "Tailor my resume"}</button>
+            <button className="btn" onClick={run} disabled={busy}>{busy ? <><Spinner /> Tailoring, about 40 seconds…</> : "Tailor my resume"}</button>
           ) : (
             <a className="btn" href="#setup" style={{ textDecoration: "none" }}>Connect your key to tailor</a>
           )}
@@ -84,6 +81,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
 
   const original = new Set([profile.resume.summary, ...profile.resume.experience.flatMap((e) => e.bullets)]);
   const bold = (s) => boldParts(s).map((x, i) => (x.bold ? <b key={i}>{x.text}</b> : x.text));
+  // Bullets only: bold impact numbers, highlight if changed.
   const mark = (s) => (showDiff && !original.has(s) ? <mark>{bold(s)}</mark> : bold(s));
   const r = t.resume;
   const failing = checks.filter((c) => !c.ok).length;
@@ -103,7 +101,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
               </li>
             ))}
           </ul>
-          {failing > 0 && <p className="small muted">Ask for a fix below, or edit the downloaded Word file.</p>}
+          {failing > 0 && <p className="small muted">Edit the downloaded Word file to fix these.</p>}
           <div className="grid" style={{ marginTop: 14, gap: 8 }}>
             <button className="btn" onClick={exportDocx}>Download Word (.docx)</button>
             <button className="btn ghost" onClick={() => window.print()}>Save as PDF</button>
@@ -122,7 +120,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
               {r.headline && <div>{r.headline}</div>}
               <div>{[r.contact.email, r.contact.phone, r.contact.location, r.contact.linkedin].filter(Boolean).join(" | ")}</div>
             </div>
-            {r.summary && <><h4>SUMMARY</h4><p style={{ margin: 0 }}>{mark(r.summary)}</p></>}
+            {r.summary && <><h4>SUMMARY</h4><p style={{ margin: 0 }}>{showDiff && !original.has(r.summary) ? <mark>{r.summary}</mark> : r.summary}</p></>}
             <h4>EXPERIENCE</h4>
             {r.experience.map((e, i) => (
               <div key={i} style={{ marginBottom: 8 }}>
@@ -131,7 +129,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
                 <ul>{e.bullets.map((b, j) => <li key={j}>{mark(b)}</li>)}</ul>
               </div>
             ))}
-            {r.education.length > 0 && <><h4>EDUCATION</h4>{r.education.map((e, i) => <div key={i}>{e.degree}, {e.school}{e.dates && ` | ${e.dates}`}</div>)}</>}
+            {r.education.length > 0 && <><h4>EDUCATION</h4>{r.education.map((e, i) => <div key={i} className="row between"><b>{e.degree}, {e.school}</b><span>{e.dates}</span></div>)}</>}
             {r.skills.length > 0 && <><h4>SKILLS</h4>{r.skills.map((s, i) => <div key={i}>{s.label && <b>{s.label}: </b>}{s.items.join(", ")}</div>)}</>}
             {r.certifications.length > 0 && <><h4>CERTIFICATIONS</h4>{r.certifications.map((c, i) => <div key={i}>{c}</div>)}</>}
           </div>
@@ -148,15 +146,6 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
             {t.left_out.length > 0 && (
               <p className="small" style={{ marginBottom: 0 }}><b>Keywords left out because your resume doesn't support them:</b> {t.left_out.join(", ")}</p>
             )}
-          </div>
-
-          <div className="card noprint" style={{ marginTop: 16 }}>
-            <h3>Want changes?</h3>
-            <textarea aria-label="Requested changes" placeholder="e.g. Lead with the lending work, keep the SQL bullet, shorter summary" value={request} onChange={(e) => setRequest(e.target.value)} />
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn sm" onClick={() => run(true)} disabled={busy || !request.trim()}>{busy ? <><Spinner /> Revising…</> : "Revise"}</button>
-              <span className="small muted">One Claude call. Put all your changes in one request.</span>
-            </div>
           </div>
         </div>
       </div>
