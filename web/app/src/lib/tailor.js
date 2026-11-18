@@ -57,22 +57,25 @@ export function tailorChecks(original, tailored, keywords, evidence = []) {
 
 /** Single-column .docx with standard headings and contact in the body, for ATS parsing. */
 export async function resumeDocx(r) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Tab, TabStopType } = await import("docx");
-  const RIGHT = 12240 - 800 * 2; // letter width minus side margins, in twips
+  const { Document, Packer, Paragraph, TextRun, AlignmentType, Tab, TabStopType } = await import("docx");
+  // A4 with 12 mm margins (twips). The date tab stop sits exactly on the right margin.
+  const PAGE = { width: 11906, height: 16838 }, M = 680, RIGHT = PAGE.width - 2 * M;
+  // ponytail: font size from word count as a one-page fit; a real fit needs Word's layout engine.
+  const n = words(r), size = n > 700 ? 18 : n > 600 ? 19 : 20;
+  const font = "Calibri", tight = { line: 250, after: 20 };
   // Left text, dates flush right on the same line (work experience and education alike).
-  const line = (left, right, opts = {}) => new Paragraph({ spacing: { before: 100, after: 20 }, tabStops: [{ type: TabStopType.RIGHT, position: RIGHT }], ...opts, children: [
-    new TextRun({ text: left, font, size: 21, bold: true }),
-    ...(right ? [new TextRun({ children: [new Tab(), right], font, size: 21 })] : []),
+  const line = (left, right, opts = {}) => new Paragraph({ spacing: { before: 90, after: 10, line: 250 }, tabStops: [{ type: TabStopType.RIGHT, position: RIGHT }], ...opts, children: [
+    new TextRun({ text: left, font, size, bold: true }),
+    ...(right ? [new TextRun({ children: [new Tab(), right], font, size })] : []),
   ] });
-  const font = "Calibri";
-  const p = (text, opts = {}) => new Paragraph({ spacing: { after: 60 }, ...opts, children: [new TextRun({ text, font, size: 21, ...(opts.run || {}) })] });
-  // Work-experience bullets: impact numbers in bold.
-  const pb = (text, opts = {}) => new Paragraph({ spacing: { after: 60 }, ...opts, children: boldParts(text).map((x) => new TextRun({ text: x.text, bold: x.bold, font, size: 21 })) });
-  const h = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 60 }, children: [new TextRun({ text: text.toUpperCase(), font, size: 22, bold: true })] });
+  const p = (text, opts = {}) => new Paragraph({ spacing: tight, ...opts, children: [new TextRun({ text, font, size, ...(opts.run || {}) })] });
+  // Work-experience bullets: impact numbers in bold, small hanging indent.
+  const pb = (text) => new Paragraph({ spacing: tight, bullet: { level: 0 }, indent: { left: 280, hanging: 200 }, children: boldParts(text).map((x) => new TextRun({ text: x.text, bold: x.bold, font, size })) });
+  const h = (text) => new Paragraph({ spacing: { before: 140, after: 40 }, border: { bottom: { style: "single", size: 4, color: "999999", space: 1 } }, children: [new TextRun({ text: text.toUpperCase(), font, size: size + 1, bold: true })] });
   const contact = [r.contact.email, r.contact.phone, r.contact.location, r.contact.linkedin].filter(Boolean).join(" | ");
 
   const children = [
-    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: r.name, font, size: 32, bold: true })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: r.name, font, size: size + 10, bold: true })] }),
     ...(r.headline ? [p(r.headline, { alignment: AlignmentType.CENTER })] : []),
     p(contact, { alignment: AlignmentType.CENTER }),
     ...(r.summary ? [h("Summary"), p(r.summary)] : []),
@@ -80,14 +83,49 @@ export async function resumeDocx(r) {
     ...r.experience.flatMap((e) => [
       line(`${e.title}, ${e.company}`, [e.location, e.dates].filter(Boolean).join(" | ")),
       ...(e.blurb ? [p(e.blurb, { run: { italics: true } })] : []),
-      ...e.bullets.map((b) => pb(b, { bullet: { level: 0 } })),
+      ...e.bullets.map((b) => pb(b)),
     ]),
     ...(r.education.length ? [h("Education"), ...r.education.map((e) => line(`${e.degree}, ${e.school}`, e.dates, { spacing: { before: 40, after: 20 } }))] : []),
     ...(r.skills.length ? [h("Skills"), ...r.skills.map((s) => p(`${s.label ? `${s.label}: ` : ""}${s.items.join(", ")}`))] : []),
     ...(r.certifications.length ? [h("Certifications"), ...r.certifications.map((c) => p(c))] : []),
   ];
-  const doc = new Document({ sections: [{ properties: { page: { margin: { top: 720, bottom: 720, left: 800, right: 800 } } }, children }] });
+  const doc = new Document({ sections: [{ properties: { page: { size: PAGE, margin: { top: M, bottom: M, left: M, right: M } } }, children }] });
   return Packer.toBlob(doc);
+}
+
+// A4 at 96 dpi, minus the 12 mm page padding top and bottom.
+const A4_PX = 1123 - 2 * 45;
+
+/**
+ * Print only the resume, from a hidden frame: no browser header/footer (date, title, URL, page numbers),
+ * none of the app around it, and scaled down (to 80% at most) so it fits one A4 page.
+ */
+export function printResume(el, title) {
+  const copy = el.cloneNode(true);
+  copy.querySelectorAll("mark").forEach((m) => m.replaceWith(...m.childNodes));
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:fixed;right:0;bottom:0;width:794px;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);
+  const d = f.contentDocument;
+  d.open();
+  d.write(`<!doctype html><html><head><meta charset="utf-8"><title></title><style>
+    @page{size:A4;margin:0}
+    html,body{margin:0;background:#fff;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .page{box-sizing:border-box;width:794px;padding:45px 52px;font:10pt/1.38 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+    h4{margin:10px 0 3px;font-size:9.5pt;letter-spacing:.7px;border-bottom:1px solid #bbb;padding-bottom:2px}
+    ul{margin:2px 0 4px;padding-left:16px} li{margin:1px 0}
+    p{margin:0} b{font-weight:700}
+    .row{display:flex;gap:10px;align-items:baseline}.between{justify-content:space-between}
+    .row>span{white-space:nowrap}
+  </style></head><body><div class="page">${copy.innerHTML}</div></body></html>`);
+  d.close();
+  d.title = title; // becomes the default PDF file name
+  const page = d.querySelector(".page");
+  const h = page.scrollHeight - 90;
+  if (h > A4_PX) page.style.zoom = Math.max(0.8, A4_PX / h).toFixed(3);
+  f.contentWindow.focus();
+  f.contentWindow.print();
+  setTimeout(() => f.remove(), 1000);
 }
 
 export function download(blob, name) {
