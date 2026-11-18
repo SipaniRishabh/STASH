@@ -130,3 +130,13 @@ table.tr select{padding:5px 8px;font-size:13px;width:auto}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .linkbtn{all:unset;cursor:pointer;color:var(--accent);text-decoration:underline}
+
+/* tailor: highlight + print only the resume */
+.doc mark{background:var(--warn-soft);padding:0 2px;border-radius:3px}
+@media print{
+  body *{visibility:hidden}
+  .print,.print *{visibility:visible}
+  .print{position:absolute;left:0;top:0;width:100%;border:0;padding:0;font-size:11pt}
+  .print mark{background:none}
+  @page{margin:12mm}
+}
