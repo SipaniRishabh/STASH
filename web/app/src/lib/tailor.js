@@ -9,6 +9,24 @@ const words = (r) => flat(r).split(/\s+/).filter(Boolean).length + r.education.l
 // ponytail: word count as a one-page proxy (~600 words fits the compact layout); a real page measure needs layout.
 export const ONE_PAGE_WORDS = 600;
 
+// Impact numbers: "22%", "1.4M users", "$370K", "40+ A/B tests", "3 hrs", "11% to 17%". Bare years (2019, 2023) stay plain.
+const IMPACT = /(?:(?:[$₹€£]|\b(?:INR|USD|EUR|GBP|Rs\.?)\s?)\s?)?\d[\d,.]*(?:\s?(?:%|\+|x\b|[KMB]\b|k\b|L\b|Cr\b|lakh|crore|mn\b|bn\b))*(?:\s?(?:hrs?|hours?|mins?|minutes?|days?|weeks?|months?|years?|yrs?|users?|customers?|merchants?|clients?|people|members|countries|cities|markets))?/gi;
+
+/** Split a line into [{ text, bold }] so impact numbers render bold in the preview, PDF and Word file. */
+export function boldParts(line) {
+  const out = [];
+  let last = 0;
+  for (const m of line.matchAll(IMPACT)) {
+    const t = m[0].trim();
+    if (/^(19|20)\d\d$/.test(t)) continue;
+    if (m.index > last) out.push({ text: line.slice(last, m.index), bold: false });
+    out.push({ text: m[0], bold: true });
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) out.push({ text: line.slice(last), bold: false });
+  return out;
+}
+
 /** Every check shown on the Tailor screen. Each: { id, name, ok, detail }. */
 export function tailorChecks(original, tailored, keywords, evidence = []) {
   const source = `${flat(original)} ${evidence.map((e) => e.text).join(" ")}`;
@@ -42,6 +60,8 @@ export async function resumeDocx(r) {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
   const font = "Calibri";
   const p = (text, opts = {}) => new Paragraph({ spacing: { after: 60 }, ...opts, children: [new TextRun({ text, font, size: 21, ...(opts.run || {}) })] });
+  // Summary and bullets: impact numbers in bold.
+  const pb = (text, opts = {}) => new Paragraph({ spacing: { after: 60 }, ...opts, children: boldParts(text).map((x) => new TextRun({ text: x.text, bold: x.bold, font, size: 21 })) });
   const h = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 160, after: 60 }, children: [new TextRun({ text: text.toUpperCase(), font, size: 22, bold: true })] });
   const contact = [r.contact.email, r.contact.phone, r.contact.location, r.contact.linkedin].filter(Boolean).join(" | ");
 
@@ -49,7 +69,7 @@ export async function resumeDocx(r) {
     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: r.name, font, size: 32, bold: true })] }),
     ...(r.headline ? [p(r.headline, { alignment: AlignmentType.CENTER })] : []),
     p(contact, { alignment: AlignmentType.CENTER }),
-    ...(r.summary ? [h("Summary"), p(r.summary)] : []),
+    ...(r.summary ? [h("Summary"), pb(r.summary)] : []),
     h("Experience"),
     ...r.experience.flatMap((e) => [
       new Paragraph({ spacing: { before: 100, after: 20 }, children: [
@@ -57,7 +77,7 @@ export async function resumeDocx(r) {
         new TextRun({ text: `  ${[e.location, e.dates].filter(Boolean).join(" | ")}`, font, size: 21 }),
       ] }),
       ...(e.blurb ? [p(e.blurb, { run: { italics: true } })] : []),
-      ...e.bullets.map((b) => p(b, { bullet: { level: 0 } })),
+      ...e.bullets.map((b) => pb(b, { bullet: { level: 0 } })),
     ]),
     ...(r.education.length ? [h("Education"), ...r.education.map((e) => p(`${e.degree}, ${e.school}${e.dates ? ` | ${e.dates}` : ""}`))] : []),
     ...(r.skills.length ? [h("Skills"), ...r.skills.map((s) => p(`${s.label ? `${s.label}: ` : ""}${s.items.join(", ")}`))] : []),
@@ -86,5 +106,13 @@ if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("tailor.js")) 
   const g = tailorChecks(base, good, ["sql", "Product Management"]), b = tailorChecks(base, bad, ["sql", "kubernetes", "go", "rust"]);
   if (!ok(g, "facts") || !ok(g, "roles") || !ok(g, "voice") || !ok(g, "keywords")) throw new Error("good flagged");
   if (ok(b, "facts") || ok(b, "roles") || ok(b, "voice") || ok(b, "keywords")) throw new Error("bad passed");
+  const bolded = (s) => boldParts(s).filter((x) => x.bold).map((x) => x.text.trim());
+  const eqA = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`bold: ${JSON.stringify(a)}`); };
+  eqA(bolded("Cut UPI payment failures by 22% for 12M users in 2023"), ["22%", "12M users"]);
+  eqA(bolded("Saved ~270hrs/week ($370K/yr) and ran 40+ A/B tests"), ["270hrs", "$370K", "40+"]);
+  eqA(bolded("Campaign worth INR 40 Cr and Rs. 5 lakh"), ["INR 40 Cr", "Rs. 5 lakh"]);
+  eqA(bolded("Raised acceptance from 11% to 17%, cutting review from 3 hrs to 30 min"), ["11%", "17%", "3 hrs", "30 min"]);
+  if (boldParts("No numbers here").length !== 1) throw new Error("plain");
+  if (boldParts("a 22% b").map((x) => x.text).join("") !== "a 22% b") throw new Error("lossy");
   console.log("tailor.js ok");
 }

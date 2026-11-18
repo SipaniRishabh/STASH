@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { download, resumeDocx, tailorChecks } from "../lib/tailor.js";
+import { boldParts, download, resumeDocx, tailorChecks } from "../lib/tailor.js";
 import { Err, Spinner } from "../ui.jsx";
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -83,7 +83,8 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
   }
 
   const original = new Set([profile.resume.summary, ...profile.resume.experience.flatMap((e) => e.bullets)]);
-  const mark = (s) => (showDiff && !original.has(s) ? <mark>{s}</mark> : s);
+  const bold = (s) => boldParts(s).map((x, i) => (x.bold ? <b key={i}>{x.text}</b> : x.text));
+  const mark = (s) => (showDiff && !original.has(s) ? <mark>{bold(s)}</mark> : bold(s));
   const r = t.resume;
   const failing = checks.filter((c) => !c.ok).length;
 
