@@ -1,0 +1,15 @@
+# Render Blueprint: one free Node web service for Jobber (web/app).
+# Render builds the Vite app, then runs server.js (static files + /api/jobs).
+services:
+  - type: web
+    name: jobber
+    runtime: node
+    plan: free
+    rootDir: web/app
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

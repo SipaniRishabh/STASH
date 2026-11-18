@@ -119,7 +119,10 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 
 ## 8. Architecture (v1)
 
-- **Frontend:** Next.js on Vercel; all Claude calls from the browser with the user's key.
+- **Hosting:** Render free web service (`render.yaml`): builds `web/app`, runs `web/app/server.js` (static files with the CSP
+  headers + `/api/jobs` with a 1-hour in-memory cache). Free instances sleep after 15 min idle (~50 s first load).
+  `vercel.json` stays as the header source and a Vercel fallback.
+- **Frontend:** Vite + React; all Claude calls from the browser with the user's key.
 - **Server:** one route, `/api/jobs`, fetches public job boards and caches for 1 hour. Never sees the key or resume.
 - **Models:** Claude Opus 5.5 (`claude-opus-5-5`) for reading resumes, scoring and tailoring, with server-side refusal fallbacks on.
   Effort `medium` for reading, `low` for single-line fixes. Cheaper models (Sonnet/Haiku) can be swapped in per call if cost per user matters.
@@ -150,7 +153,7 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 
 Decided:
 - Demo mode uses a made-up sample resume (fictional PM persona), with saved results so it runs without a key.
-- v1 launches on the free `*.vercel.app` link; move to `jobber.<own-domain>` once a domain is bought.
+- v1 launches on the free `*.onrender.com` link (vercel.com was unreachable for the user); move to `jobber.<own-domain>` once a domain is bought.
 - Resume design: compact one-page single column, work history above skills and projects.
 
 ## Changelog
@@ -184,3 +187,5 @@ Decided:
 - **2026-11-18:** Re-score with the tailored resume: from Tailor ("Re-score match with this version") or a banner on the Match
   report. The Match report then switches between "Original resume" and "Tailored resume" scores; Apply, the tracker and the
   job list use the tailored score once it exists. A tailored resume that changed after scoring shows a "re-score" banner.
+- **2026-11-18:** Hosting moved to Render: `render.yaml` blueprint and `web/app/server.js` (Node, no dependencies) serving
+  `dist/` with the same security headers and `/api/jobs` with a 1-hour in-memory cache that also merges identical in-flight searches.
