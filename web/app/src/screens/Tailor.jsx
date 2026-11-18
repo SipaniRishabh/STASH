@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { boldParts, download, resumeDocx, tailorChecks } from "../lib/tailor.js";
+import { boldParts, download, printResume, resumeDocx, tailorChecks } from "../lib/tailor.js";
 import { Err, Spinner } from "../ui.jsx";
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -104,7 +104,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
           {failing > 0 && <p className="small muted">Edit the downloaded Word file to fix these.</p>}
           <div className="grid" style={{ marginTop: 14, gap: 8 }}>
             <button className="btn" onClick={exportDocx}>Download Word (.docx)</button>
-            <button className="btn ghost" onClick={() => window.print()}>Save as PDF</button>
+            <button className="btn ghost" onClick={() => printResume(document.querySelector(".doc.print"), `${t.resume.name || "Resume"} - ${job.company || "Resume"}`)}>Save as PDF</button>
             <a className="btn ghost" href="#apply" style={{ textAlign: "center", textDecoration: "none" }}>Continue to apply</a>
           </div>
           <label className="row small" style={{ fontWeight: 400, marginTop: 14, flexWrap: "nowrap" }}>
