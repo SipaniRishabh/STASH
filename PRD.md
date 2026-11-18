@@ -181,3 +181,6 @@ Decided:
   single column, standard headings) and PDF via the browser's print dialog. Apply (F11, F12): optional "why company / why role"
   answers and a cover note under 120 words with copy buttons and a wording check; decision buttons log to the tracker. Tracker
   gains Planning to apply and Not applying statuses. Excel export stays CSV.
+- **2026-11-18:** Re-score with the tailored resume: from Tailor ("Re-score match with this version") or a banner on the Match
+  report. The Match report then switches between "Original resume" and "Tailored resume" scores; Apply, the tracker and the
+  job list use the tailored score once it exists. A tailored resume that changed after scoring shows a "re-score" banner.

@@ -45,7 +45,8 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
   const visible = rows
     .filter((r) => show === "all" || (show === "open" ? r.elig.status === "ok" : r.elig.status === show))
     .sort((a, b) => {
-      const sa = matches[a.job.id]?.result, sb = matches[b.job.id]?.result;
+      const latest = (m) => m && (m.tailoredScore?.result || m.result);
+      const sa = latest(matches[a.job.id]), sb = latest(matches[b.job.id]);
       if (sort === "new") return a.job.ageDays - b.job.ageDays;
       // Scored jobs first by score, then quick skill overlap; each flag costs a little rank.
       const k = (r, s) => (s ? 1000 + scoreOf(s) : r.hits.length * 5) - r.flags.length * 3;
@@ -100,7 +101,7 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
       {pasted.length > 0 && (
         <>
           <h3>Jobs you pasted</h3>
-          {pasted.map((m) => <JobRow key={m.job.id} job={m.job} elig={{ status: m.result.eligibility }} flags={flags(m.job, prefs)} hits={overlap(m.job, profile.resume)} scored={m.result} onOpen={() => open(m.job)} />)}
+          {pasted.map((m) => <JobRow key={m.job.id} job={m.job} elig={{ status: m.result.eligibility }} flags={flags(m.job, prefs)} hits={overlap(m.job, profile.resume)} scored={m.tailoredScore?.result || m.result} onOpen={() => open(m.job)} />)}
           <h3 style={{ marginTop: 18 }}>From job boards</h3>
         </>
       )}
@@ -124,7 +125,7 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
             </span>
           </div>
           {!visible.length && <p className="muted">No jobs here. Try another filter, more titles, or a longer time window on the Resume step.</p>}
-          {visible.map((r) => <JobRow key={r.job.id} {...r} scored={matches[r.job.id]?.result} onOpen={() => open(r.job)} />)}
+          {visible.map((r) => <JobRow key={r.job.id} {...r} scored={matches[r.job.id]?.tailoredScore?.result || matches[r.job.id]?.result} onOpen={() => open(r.job)} />)}
         </>
       )}
       {!feed && busy && <p className="muted"><Spinner /> Searching job boards. This takes about 20 seconds.</p>}

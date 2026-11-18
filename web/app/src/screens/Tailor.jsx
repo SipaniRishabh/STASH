@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { boldParts, download, printResume, resumeDocx, tailorChecks } from "../lib/tailor.js";
-import { Err, Spinner } from "../ui.jsx";
+import { Err, Spinner, go } from "../ui.jsx";
+import { scoreTask } from "./Match.jsx";
+import { chance } from "../lib/jobs.js";
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-export default function Tailor({ apiKey, profile, current, matches, setMatches, tasks, runTask }) {
+export default function Tailor({ apiKey, profile, prefs, current, matches, setMatches, tasks, runTask }) {
   const saved = current && matches[current.id];
   const task = current && tasks[`tailor:${current.id}`];
   const busy = !!task?.running;
@@ -85,6 +87,7 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
   const mark = (s) => (showDiff && !original.has(s) ? <mark>{bold(s)}</mark> : bold(s));
   const r = t.resume;
   const failing = checks.filter((c) => !c.ok).length;
+  const rescored = saved.tailoredScore?.tailoredAt === t.at ? saved.tailoredScore.result : null;
 
   return (
     <>
@@ -105,6 +108,10 @@ export default function Tailor({ apiKey, profile, current, matches, setMatches, 
           <div className="grid" style={{ marginTop: 14, gap: 8 }}>
             <button className="btn" onClick={exportDocx}>Download Word (.docx)</button>
             <button className="btn ghost" onClick={() => printResume(document.querySelector(".doc.print"), `${t.resume.name || "Resume"} - ${job.company || "Resume"}`)}>Save as PDF</button>
+            <button className="btn ghost" onClick={() => { scoreTask("tailored", current, { apiKey, profile, prefs, matches, setMatches, runTask }); go("match"); }} disabled={!!tasks[`score-tailored:${current.id}`]?.running}>
+              {rescored ? "Re-score match again" : "Re-score match with this version"}
+            </button>
+            {rescored && <p className="small muted" style={{ margin: 0, textAlign: "center" }}>Match with this version: <b>{chance(rescored, job, saved.referral).match}</b> (original {chance(result, job, saved.referral).match})</p>}
             <a className="btn ghost" href="#apply" style={{ textAlign: "center", textDecoration: "none" }}>Continue to apply</a>
           </div>
           <label className="row small" style={{ fontWeight: 400, marginTop: 14, flexWrap: "nowrap" }}>
