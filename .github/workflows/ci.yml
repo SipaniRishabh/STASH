@@ -1,11 +1,11 @@
-# Runs on every pull request and every push to main. A red X on the PR means one of these steps failed:
+# Runs on every pull request and every push to master. A red X on the PR means one of these steps failed:
 # open the PR's "Checks" tab (or the repo's "Actions" tab), click the failed run, then the failed step to read its log.
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   web:

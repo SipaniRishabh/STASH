@@ -129,7 +129,7 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
   Effort `medium` by default, `low` for single-line fixes and cover notes. Prompt caching: the resume and fixed rules go first in a
   cached block, the job goes after, so scoring several jobs in a row reads the resume from cache. The browser console logs
   input / cache read / cache write / output tokens per call.
-- **CI:** `.github/workflows/ci.yml` runs `npm test` (self-checks), `npm run build` and a Python compile check on every PR and push to main.
+- **CI:** `.github/workflows/ci.yml` runs `npm test` (self-checks), `npm run build` and a Python compile check on every PR and push to master.
 - **Code:** `web/app` (Vite + React). Built: every screen (Landing, Connect key, Resume, Resume report, Jobs, Match report, Tailor, Apply, Tracker).
   `/api/jobs` lives in `web/app/api/jobs.js` (Vercel function, CDN-cached 1 hr via `s-maxage`); `vite.config.js` mounts the same handler in dev.
 - **Storage:** localStorage / IndexedDB in the browser.
