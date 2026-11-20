@@ -16,6 +16,9 @@ export const ELIG = {
   no: ["bad", "Not open to you"],
 };
 
+/** True when the job is based in India (by its location). Worldwide-remote jobs at foreign companies count as abroad. */
+export const inIndia = (job) => MARKETS.India.test(job.location || "");
+
 /** Country from "City, country" (last part). */
 export const homeCountry = (home) => (home || "").split(",").pop().trim().toLowerCase();
 
@@ -131,5 +134,10 @@ if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("jobs.js")) {
   eq(excludedBy("Staff Product Manager", ex), "staff", "exclude staff");
   eq(excludedBy("Head of Product", ex), "head of", "exclude head of");
   eq(excludedBy("Product Manager, MVP launches", ex), null, "mvp is not vp");
+  // India vs abroad, by job location.
+  eq(inIndia({ location: "Bengaluru, Karnataka" }), true, "bengaluru is india");
+  eq(inIndia({ location: "Remote - India" }), true, "remote india");
+  eq(inIndia({ location: "San Francisco, CA" }), false, "sf is abroad");
+  eq(inIndia({ location: "Worldwide" }), false, "worldwide counts as abroad");
   console.log("jobs.js ok");
 }

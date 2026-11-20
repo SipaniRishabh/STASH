@@ -321,6 +321,67 @@ ${WRITING_RULES}`,
   }], { model: MODELS.write });
 }
 
+const CompanyInfo = z.object({
+  found: z.boolean(),
+  summary: z.string(),
+  founded: z.string(),
+  headquarters: z.string(),
+  revenue: z.string(),
+  revenue_as_of: z.string(),
+  funding: z.string(),
+  funding_as_of: z.string(),
+  sources: z.array(z.object({ title: z.string(), url: z.string() })),
+});
+
+/**
+ * Company facts for the job list's "More info" (founded, latest revenue, funding), looked up with Claude's
+ * web search on the user's key. Web search always attaches citations, and the docs don't say whether those
+ * mix with structured output, so this asks for JSON in plain text and validates it here instead.
+ */
+export async function companyInfo(apiKey, company, jobUrl = "") {
+  const prompt = `Look up the company "${company}"${jobUrl ? ` (it posted this job: ${jobUrl})` : ""} with web search.
+Find, from the most recent reliable sources (company site, filings, Crunchbase, TechCrunch, Reuters, Tracxn, Inc42, YourStory):
+- founded: the year it was founded
+- headquarters: city and country
+- revenue: the latest revenue the company reported or that a reliable outlet reported, with currency and period (e.g. "INR 1,200 Cr, FY2025" or "$450M ARR, 2025"). "Not disclosed" if nothing reliable.
+- funding: total funding raised and the latest round with its amount and date (e.g. "$120M total; Series C $60M, Mar 2025"), or "Public (NASDAQ: XYZ)" for listed companies, or "Bootstrapped" / "Not disclosed".
+- revenue_as_of / funding_as_of: the date of the source you used for each.
+- summary: one plain sentence on what the company does.
+- sources: the pages you used, title and URL.
+Never guess numbers. If two companies share the name, use the one that posted this job. If you can't identify it, set found to false.
+
+Reply with ONLY one JSON object, no other text, with exactly these keys:
+{"found": true, "summary": "", "founded": "", "headquarters": "", "revenue": "", "revenue_as_of": "", "funding": "", "funding_as_of": "", "sources": [{"title": "", "url": ""}]}`;
+  try {
+    const messages = [{ role: "user", content: prompt }];
+    let res;
+    for (let turn = 0; turn < 4; turn++) {
+      res = await client(apiKey).beta.messages.create({
+        model: MODELS.judge,
+        max_tokens: 16000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        output_config: { effort: "low" },
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
+        messages,
+      });
+      logUsage(MODELS.judge, res.usage);
+      if (res.stop_reason !== "pause_turn") break;
+      messages.push({ role: "assistant", content: res.content });
+    }
+    if (res.stop_reason === "refusal") throw new Error("Claude declined this lookup.");
+    const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+    const parsed = CompanyInfo.safeParse(JSON.parse(json || "null"));
+    if (!parsed.success) throw new Error("Claude's answer could not be read. Try again.");
+    // Only http(s) links are ever shown.
+    return { ...parsed.data, sources: parsed.data.sources.filter((s) => /^https?:\/\//.test(s.url)) };
+  } catch (e) {
+    if (e instanceof SyntaxError) throw new Error("Claude's answer could not be read. Try again.");
+    throw new Error(friendly(e));
+  }
+}
+
 const Cover = z.object({ why_company: z.string(), why_role: z.string(), cover_note: z.string() });
 
 /** Application answers and a short cover note (F11), from resume facts only. */

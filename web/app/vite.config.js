@@ -24,8 +24,13 @@ function mountApi(server) {
 }
 const localApi = { name: "local-api", configureServer: mountApi, configurePreviewServer: mountApi };
 
+// Static hosting has no server to fill in __SITE__ (the absolute URL link previews need), so do it at build time
+// when SITE_URL is set. Left as-is otherwise, and server.js fills it per request.
+const site = (process.env.SITE_URL || "").replace(/\/$/, "");
+const siteUrl = { name: "site-url", transformIndexHtml: (html) => (site ? html.replaceAll("__SITE__", site) : html) };
+
 export default defineConfig({
-  plugins: [react(), localApi],
+  plugins: [react(), localApi, siteUrl],
   preview: { port: 4174, headers },
   server: { port: 4175 },
 });
