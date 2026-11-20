@@ -6,6 +6,50 @@ const flat = (r) =>
 
 const words = (r) => flat(r).split(/\s+/).filter(Boolean).length + r.education.length * 8;
 
+// --- Whole-word keyword matching -------------------------------------------------------------------------------
+// Words, lowercased: "A/B tests, Node.js" -> ["a", "b", "tests", "node", "js"].
+export const tokens = (s) => (s || "").toLowerCase().split(/[^a-z0-9+#]+/).filter(Boolean);
+const STOP = new Set(["and", "or", "of", "the", "an", "to", "in", "for", "with", "on", "at", "by"]);
+const SUFFIXES = ["ments", "ment", "ings", "ing", "ions", "ion", "ers", "er", "ed", "es", "s"];
+// Rough stem: "testing" -> "test", "management" -> "manage", "experiments" -> "experi". Keeps at least 4 letters.
+const stem = (w) => {
+  for (const s of SUFFIXES) if (w.endsWith(s) && w.length - s.length >= 4) return w.slice(0, -s.length);
+  return w;
+};
+// One keyword word against one resume word. Short words (Go, AI, SQL, R) must match exactly, so "go" never
+// matches "good". Longer words match on their stem in either direction ("manager" ~ "management").
+const wordHit = (k, t) => {
+  if (k === t) return true;
+  if (k.length <= 3 || t.length <= 3) return false;
+  const a = stem(k), b = stem(t);
+  return a === b || (a.length >= 4 && b.startsWith(a)) || (b.length >= 5 && a.startsWith(b));
+};
+
+/** True if every meaningful word of the keyword appears as a whole word in the text tokens. */
+export function hasKeyword(keyword, textTokens) {
+  const kw = tokens(keyword);
+  const need = kw.length > 1 ? kw.filter((w) => !STOP.has(w)) : kw;
+  return need.length > 0 && need.every((k) => textTokens.some((t) => wordHit(k, t)));
+}
+
+// --- New names and tools --------------------------------------------------------------------------------------
+// Words that look like a skill, tool or proper name: has a capital after the first letter of a sentence, a digit,
+// or + / # / . inside (Kubernetes, GA4, C++, Node.js). Sentence-start capitals are skipped.
+function namedTerms(lines) {
+  const out = new Set();
+  for (const line of lines) {
+    const parts = (line || "").split(/\s+/);
+    parts.forEach((raw, i) => {
+      const w = raw.replace(/^[^\w+#.]+|[^\w+#]+$/g, "");
+      if (w.length < 2) return;
+      const prevEndsSentence = i === 0 || /[.:;!?]$/.test(parts[i - 1]);
+      const looksNamed = /\d|[+#]|\w\.\w/.test(w) || /[A-Z]/.test(w.slice(1)) || (/^[A-Z]/.test(w) && !prevEndsSentence);
+      if (looksNamed && !/^(19|20)\d\d$/.test(w)) out.add(w);
+    });
+  }
+  return [...out];
+}
+
 // ponytail: word count as a one-page proxy (~600 words fits the compact layout); a real page measure needs layout.
 export const ONE_PAGE_WORDS = 600;
 
@@ -29,26 +73,45 @@ export function boldParts(line) {
 
 /** Every check shown on the Tailor screen. Each: { id, name, ok, detail }. */
 export function tailorChecks(original, tailored, keywords, evidence = []) {
-  const source = `${flat(original)} ${evidence.map((e) => e.text).join(" ")}`;
+  const everything = (r) => `${flat(r)} ${r.name} ${r.education.map((e) => `${e.degree} ${e.school} ${e.dates}`).join(" ")}`;
+  const source = `${everything(original)} ${evidence.map((e) => e.text).join(" ")}`;
+
+  // 1. Numbers: every number in the tailored resume must already be in the resume or the user's own evidence.
   const nums = (s) => new Set(s.match(/\d[\d,.]*%?/g) || []);
   const have = nums(source);
-  const newNums = [...nums(flat(tailored))].filter((n) => !have.has(n));
+  const newNums = [...nums(everything(tailored))].filter((n) => !have.has(n));
 
-  const origFacts = new Set(original.experience.map((e) => `${e.title}|${e.company}|${e.dates}`));
-  const changedFacts = tailored.experience.filter((e) => !origFacts.has(`${e.title}|${e.company}|${e.dates}`));
+  // 2. Skills, tools and names: every skill item and every named term in the text must already exist somewhere
+  //    in the resume or evidence, as a whole word. Catches "Kubernetes" or "Tableau" slipped into a bullet.
+  const sourceTokens = new Set(tokens(source));
+  const known = (term) => tokens(term).every((t) => sourceTokens.has(t));
+  const prose = [tailored.headline, tailored.summary, ...tailored.experience.flatMap((e) => [e.blurb, ...e.bullets]), ...tailored.certifications];
+  const newTerms = [...new Set([...tailored.skills.flatMap((s) => s.items), ...namedTerms(prose)])].filter((t) => !known(t));
+
+  // 3. Fixed facts: name, contact, roles, education and certifications must match the original exactly.
+  const key = (e) => `${e.title}|${e.company}|${e.dates}`;
+  const origRoles = new Set(original.experience.map(key));
+  const changed = tailored.experience.filter((e) => !origRoles.has(key(e))).map((e) => `${e.title} at ${e.company}`);
+  if (tailored.name !== original.name) changed.push("your name");
+  for (const k of ["email", "phone", "location", "linkedin"]) if (tailored.contact[k] !== original.contact[k]) changed.push(`your ${k}`);
+  const edu = (e) => `${e.degree}|${e.school}|${e.dates}`;
+  const origEdu = new Set(original.education.map(edu));
+  tailored.education.filter((e) => !origEdu.has(edu(e))).forEach((e) => changed.push(`${e.degree} at ${e.school}`));
+  const origCerts = new Set(original.certifications);
+  tailored.certifications.filter((c) => !origCerts.has(c)).forEach((c) => changed.push(`certification "${c}"`));
 
   const f = lint(tailored);
   const voice = [...f.buzz, ...f.dash, ...f.verbs];
 
-  const text = flat(tailored).toLowerCase();
-  // Stem match: "Product Management" counts for "product manager", "designing experiments" for "design experiments".
-  const hit = (k) => k.toLowerCase().split(/\s+/).every((w) => text.includes(w.length > 5 ? w.slice(0, w.length - 4) : w));
-  const missing = keywords.filter((k) => !hit(k));
+  // 4. Keywords: whole words only, so "Go" isn't found inside "good" and "AI" isn't found inside "email".
+  const textTokens = tokens(flat(tailored));
+  const missing = keywords.filter((k) => !hasKeyword(k, textTokens));
   const n = words(tailored);
 
   return [
     { id: "facts", name: "No invented numbers", ok: !newNums.length, detail: newNums.length ? `New numbers not in your resume: ${newNums.join(", ")}` : "Every number comes from your resume." },
-    { id: "roles", name: "Employers, titles and dates unchanged", ok: !changedFacts.length, detail: changedFacts.length ? `Changed: ${changedFacts.map((e) => `${e.title} at ${e.company}`).join("; ")}` : "Same roles as your resume." },
+    { id: "terms", name: "No new skills or tools", ok: !newTerms.length, detail: newTerms.length ? `Not in your resume, check before you send: ${newTerms.join(", ")}` : "Every skill, tool and name comes from your resume." },
+    { id: "roles", name: "Name, contact, roles and education unchanged", ok: !changed.length, detail: changed.length ? `Changed: ${changed.join("; ")}` : "Same details as your resume." },
     { id: "voice", name: "Human voice", ok: !voice.length, detail: voice.length ? voice.map((v) => `${v.issue} "${v.text.slice(0, 80)}…"`).join(" ") : "No buzzwords, dashes or repeated openers." },
     { id: "keywords", name: "Keyword coverage", ok: missing.length <= Math.floor(keywords.length / 3), detail: `${keywords.length - missing.length} of ${keywords.length} job keywords.${missing.length ? ` Not used: ${missing.join(", ")}.` : ""}` },
     { id: "page", name: "Fits one page", ok: n <= ONE_PAGE_WORDS, detail: `About ${n} words (one page is roughly ${ONE_PAGE_WORDS}).` },
@@ -145,8 +208,22 @@ if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("tailor.js")) 
   const bad = structuredClone(base); bad.experience[0].bullets[0] = "Cut failures 35% using a robust pipeline"; bad.experience[0].company = "Y";
   const ok = (c, id) => c.find((x) => x.id === id).ok;
   const g = tailorChecks(base, good, ["sql", "Product Management"]), b = tailorChecks(base, bad, ["sql", "kubernetes", "go", "rust"]);
-  if (!ok(g, "facts") || !ok(g, "roles") || !ok(g, "voice") || !ok(g, "keywords")) throw new Error("good flagged");
+  if (!ok(g, "facts") || !ok(g, "terms") || !ok(g, "roles") || !ok(g, "voice") || !ok(g, "keywords")) throw new Error("good flagged");
   if (ok(b, "facts") || ok(b, "roles") || ok(b, "voice") || ok(b, "keywords")) throw new Error("bad passed");
+  // New tools in a bullet or in Skills are caught; so are a changed email and a new degree.
+  const sneaky = structuredClone(base);
+  sneaky.experience[0].bullets[1] = "Ran 40 tests on Kubernetes";
+  sneaky.skills[0].items.push("Tableau");
+  sneaky.contact.email = "x@y.z";
+  sneaky.education.push({ degree: "MBA", school: "IIM", dates: "2019" });
+  const s = tailorChecks(base, sneaky, []);
+  const detail = (c, id) => c.find((x) => x.id === id).detail;
+  if (ok(s, "terms") || !/Kubernetes/.test(detail(s, "terms")) || !/Tableau/.test(detail(s, "terms"))) throw new Error(`terms: ${detail(s, "terms")}`);
+  if (ok(s, "roles") || !/email/.test(detail(s, "roles")) || !/MBA/.test(detail(s, "roles"))) throw new Error(`roles: ${detail(s, "roles")}`);
+  // Whole-word keywords: short words need an exact word, longer words match their stem.
+  const tk = tokens("Good email skills. Designing experiments, A/B tests and stakeholder management in SQL.");
+  for (const k of ["go", "AI", "R"]) if (hasKeyword(k, tk)) throw new Error(`false keyword hit: ${k}`);
+  for (const k of ["SQL", "A/B testing", "design experiments", "stakeholder manager", "Stakeholder Management"]) if (!hasKeyword(k, tk)) throw new Error(`missed keyword: ${k}`);
   const bolded = (s) => boldParts(s).filter((x) => x.bold).map((x) => x.text.trim());
   const eqA = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`bold: ${JSON.stringify(a)}`); };
   eqA(bolded("Cut UPI payment failures by 22% for 12M users in 2023"), ["22%", "12M users"]);

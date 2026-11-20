@@ -69,6 +69,18 @@ export function overlap(job, resume) {
   return terms.filter((t) => new RegExp(`\\b${t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(d));
 }
 
+/** Default title words to skip (same idea as title_exclude in profile.json). Users edit theirs on the Resume step. */
+export const DEFAULT_EXCLUDE = ["director", "vp", "vice president", "head of", "principal", "group product", "staff", "intern", "chief"];
+
+/** The first exclude word found in the title as a whole word or phrase, or null. */
+export function excludedBy(title, exclude) {
+  const t = ` ${(title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  return (exclude || []).find((w) => {
+    const p = w.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return p && t.includes(` ${p} `);
+  }) ?? null;
+}
+
 export const RUBRIC = [
   ["must_haves", "Must-have requirements", 35],
   ["seniority", "Seniority and years", 20],
@@ -77,9 +89,12 @@ export const RUBRIC = [
   ["location", "Location and eligibility", 10],
 ];
 
-/** Match = sum of rubric parts (each clamped to its max). Interview chance = match with stated adjustments. */
+/** Match score = sum of rubric parts, each clamped to 0..its max. The one place this is computed. */
+export const matchScore = (result) => RUBRIC.reduce((s, [k, , max]) => s + Math.max(0, Math.min(max, result.parts[k]?.score ?? 0)), 0);
+
+/** Interview chance = match with stated adjustments. */
 export function chance(result, job, referral) {
-  const match = RUBRIC.reduce((s, [k, , max]) => s + Math.max(0, Math.min(max, result.parts[k].score)), 0);
+  const match = matchScore(result);
   const adj = [];
   if (job.ageDays > 45) adj.push(["Posted more than 45 days ago", -20]);
   else if (job.ageDays > 30) adj.push(["Posted more than 30 days ago", -10]);
@@ -109,5 +124,12 @@ if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("jobs.js")) {
   const c = chance({ parts, seniority_gap_levels: 0, eligibility: "ok" }, { ageDays: 40 }, false);
   eq(c.match, 80, "match sum"); eq(c.pct, 70, "age penalty"); eq(c.level, "High", "level");
   eq(chance({ parts, missing_hard_must_have: true }, { ageDays: 1 }).level, "Low", "cap");
+  // A part over its max (Claude said 38/35) counts as 35 everywhere: list, report and tracker.
+  eq(matchScore({ parts: { ...parts, must_haves: { score: 38 } } }), 85, "clamped");
+  // Title exclude: whole words, so "staff" skips "Staff PM" but "vp" doesn't skip "MVP".
+  const ex = ["staff", "vp", "head of"];
+  eq(excludedBy("Staff Product Manager", ex), "staff", "exclude staff");
+  eq(excludedBy("Head of Product", ex), "head of", "exclude head of");
+  eq(excludedBy("Product Manager, MVP launches", ex), null, "mvp is not vp");
   console.log("jobs.js ok");
 }

@@ -52,19 +52,19 @@ Flow: Landing → Connect key → Resume → Resume report → Jobs → Match re
 | F1 | **Bring-your-own key** | Key saved in localStorage only; sent only to `api.anthropic.com`; "Forget my key" clears it; demo mode works with no key |
 | F2 | **Resume upload + understanding** | PDF/DOCX parsed in browser; summary of seniority, strengths, wins, watch-outs; user can correct it |
 | F2b | **Google Docs link import** | User pastes a Doc shared as "anyone with the link can view"; Claude fetches it directly (web fetch limited to Google domains), our server never sees it; warning that link sharing exposes the doc |
-| F3 | **Preferences** | Target titles, home location, per-market work mode (e.g. India: any; US/EU: remote and open to India), freshness window (default 60 days), deal-breakers |
+| F3 | **Preferences** | Target titles, home location, per-market work mode (e.g. India: any; US/EU: remote and open to India), freshness window (default 60 days), deal-breakers, title words to skip (default: director, vp, head of, principal, staff, intern…), extra company boards (`greenhouse:slug`, up to 15) |
 | F4 | **Resume report** | Overall score + categories (ATS parsing, Impact, Human voice, Repetition, Length & format, Sections, Spelling & grammar); each issue shows now vs suggested and a one-click fix |
 | F4b | **How this report is judged** | Panel listing every check, its exact rule, whether it's a fixed rule or Claude's judgement, the scoring formula, and the flagged word list |
 | F4c | **Interview readiness (story review)** | Claude reviews the 4 achievements most likely to be probed against: problem/why it mattered/ownership; options and decision logic; metrics and how measured; what went wrong and trade-offs; individual vs team contribution. Story strength score (separate from resume health) counts only problem, metrics, ownership; the other two become practice questions. Offers a stronger bullet using only existing facts |
 | F4d | **Copy fixes into your own doc** | Every suggested fix has Copy; Google Doc users also get Open my doc and Mark as fixed. Jobber never edits the user's doc |
 | F5 | **Headline + summary writer** | Generates headline and summary from resume facts only; passes the human-voice lint |
-| F6 | **Job feed** | Greenhouse, Lever, Ashby, Himalayas, Remotive; ≤ 60 days old; title filter; eligibility check (worldwide / region OK / not eligible / verify); de-duplicated; cached server-side 1 hr |
+| F6 | **Job feed** | Greenhouse, Lever, Ashby boards from `companies.json` plus the user's own boards, Himalayas, Remotive; ≤ 60 days old; title include + exclude filter (whole words); eligibility check (worldwide / region OK / not eligible / verify); de-duplicated; cached server-side 1 hr on a normalised query, max 200 entries, 20 searches per IP per 10 min |
 | F7 | **Ghost and scam signals** | Each job carries flags: posted > 30 days, link closed, no salary or vague JD, asks for payment or personal-email contact. Flagged jobs ranked lower, never hidden silently |
 | F8 | **Paste a JD** | Paste text from LinkedIn/Naukri/anywhere + optional URL; same checks as feed (warnings, not blocks) |
 | F9 | **Match report** | Match score (rubric: must-haves 35, seniority 20, domain 20, skills 15, location 10), interview chance (Low/Med/High + % with stated adjustments), requirement ↔ evidence table with the source of each piece of evidence (experience, Skills section, implied PM practice, added by user), gaps |
 | F9b | **Implied PM skills** | Ruleset (`src/lib/pmskills.js`) of everyday PM practice by years in PM/APM roles (0+, 2+, 4+, 7+) plus practices signalled by the kind of work (A/B testing, SQL, ML teams, payments, growth). Sent with every scoring call; counts toward the score only, never written into a tailored resume. Never satisfies hard requirements (degrees, years, named tools, domains) |
 | F9c | **User-added evidence** | "I have this" on any gap or partial row; user writes where/how in their own words. Saved with the resume and used for every job. Pending additions show a banner telling the user to add everything, then re-score once (one Claude call) |
-| F10 | **Tailored resume** | Highlighted diff vs original; checks: no invented facts, human voice, ATS parse, keyword coverage, 1 page; impact numbers bold; no in-app revise box (edit the downloaded .docx); export .docx + .pdf, no Jobber branding |
+| F10 | **Tailored resume** | Highlighted diff vs original; checks: no invented numbers, no new skills/tools/names, name/contact/roles/education/certifications unchanged, human voice, ATS parse, keyword coverage (whole words), 1 page; impact numbers bold; no in-app revise box (edit the downloaded .docx); export .docx + .pdf, no Jobber branding |
 | F11 | **Cover note + form answers** | Why company, why role, 120-word cover note, notice/salary from profile; copy buttons; human-voice lint |
 | F12 | **Assisted apply** | Jobber never submits. User marks "I'm going to apply" (tracker: Planning to apply), "Not applying" with optional reason, or "I've submitted" (confirm dialog, tracker: Applied). One tracker row per job, updated in place |
 | F13 | **Tracker** | Table with status (Planning to apply, Applied, Intro Call Done, Interview Scheduled, Passed, Rejected, Ghosted, Not applying), notes, counts per status, match score links back to the job's match report; export CSV (opens in Excel) |
@@ -124,8 +124,12 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
   `vercel.json` stays as the header source and a Vercel fallback.
 - **Frontend:** Vite + React; all Claude calls from the browser with the user's key.
 - **Server:** one route, `/api/jobs`, fetches public job boards and caches for 1 hour. Never sees the key or resume.
-- **Models:** Claude Opus 5.5 (`claude-opus-5-5`) for reading resumes, scoring and tailoring, with server-side refusal fallbacks on.
-  Effort `medium` for reading, `low` for single-line fixes. Cheaper models (Sonnet/Haiku) can be swapped in per call if cost per user matters.
+- **Models:** Claude Opus 5.5 (`claude-opus-5-5`) for writing that goes to recruiters (tailored resume, cover note); Claude Sonnet 5.5
+  (`claude-sonnet-5-5`) for reading resumes, match scoring, story review and one-line fixes. Server-side refusal fallbacks on for both.
+  Effort `medium` by default, `low` for single-line fixes and cover notes. Prompt caching: the resume and fixed rules go first in a
+  cached block, the job goes after, so scoring several jobs in a row reads the resume from cache. The browser console logs
+  input / cache read / cache write / output tokens per call.
+- **CI:** `.github/workflows/ci.yml` runs `npm test` (self-checks), `npm run build` and a Python compile check on every PR and push to master.
 - **Code:** `web/app` (Vite + React). Built: every screen (Landing, Connect key, Resume, Resume report, Jobs, Match report, Tailor, Apply, Tracker).
   `/api/jobs` lives in `web/app/api/jobs.js` (Vercel function, CDN-cached 1 hr via `s-maxage`); `vite.config.js` mounts the same handler in dev.
 - **Storage:** localStorage / IndexedDB in the browser.
@@ -191,3 +195,8 @@ Decided:
   `dist/` with the same security headers and `/api/jobs` with a 1-hour in-memory cache that also merges identical in-flight searches.
 - **2026-11-18:** Link previews: page description, Open Graph and Twitter card tags with a 1200x630 share image (`public/og.png`)
   and a favicon. `server.js` fills in absolute URLs from Render's `RENDER_EXTERNAL_URL`.
+- **2026-11-20:** Review fixes. Keyword coverage now matches whole words ("Go" no longer counts inside "good"). Tailor checks add
+  "No new skills or tools" and also compare name, contact, education and certifications. Job list, match report and tracker share one
+  clamped match score (`matchScore`). `/api/jobs` normalises the query before caching (junk params no longer bypass the cache), caps the
+  cache at 200 entries and rate-limits 20 searches per IP per 10 minutes. Company boards read from `companies.json`, and users can add
+  their own. Title exclude filter (F3, F6). Models split: Opus 5.5 writes, Sonnet 5.5 reads and scores, with prompt caching. Added CI.

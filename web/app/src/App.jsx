@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStored, forgetEverything } from "./lib/store.js";
 import { DEMO_RESUME, DEMO_RAW_TEXT, DEMO_PAGES, DEMO_UNDERSTANDING, DEMO_LANGUAGE } from "./demo.js";
 import { go } from "./ui.jsx";
+import { DEFAULT_EXCLUDE } from "./lib/jobs.js";
 import Resume from "./screens/Resume.jsx";
 import Report from "./screens/Report.jsx";
 import Tracker from "./screens/Tracker.jsx";
@@ -21,6 +22,8 @@ export const DEFAULT_PREFS = {
   markets: { India: "Onsite, hybrid or remote", "United States": "Remote, open to my country", Europe: "Remote, open to my country" },
   maxAge: 60,
   dealBreakers: "",
+  exclude: DEFAULT_EXCLUDE, // skip job titles containing any of these words
+  boards: "", // extra company boards, e.g. "greenhouse:razorpay, lever:swiggy"
 };
 
 const DEMO_PROFILE = {
