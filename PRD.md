@@ -58,7 +58,7 @@ Flow: Landing → Connect key → Resume → Resume report → Jobs → Match re
 | F4c | **Interview readiness (story review)** | Claude reviews the 4 achievements most likely to be probed against: problem/why it mattered/ownership; options and decision logic; metrics and how measured; what went wrong and trade-offs; individual vs team contribution. Story strength score (separate from resume health) counts only problem, metrics, ownership; the other two become practice questions. Offers a stronger bullet using only existing facts |
 | F4d | **Copy fixes into your own doc** | Every suggested fix has Copy; Google Doc users also get Open my doc and Mark as fixed. Jobber never edits the user's doc |
 | F5 | **Headline + summary writer** | Generates headline and summary from resume facts only; passes the human-voice lint |
-| F6 | **Job feed** | Greenhouse, Lever, Ashby boards from `companies.json` plus the user's own boards, Himalayas, Remotive; ≤ 60 days old; title include + exclude filter (whole words); eligibility check (worldwide / region OK / not eligible / verify); de-duplicated; cached server-side 1 hr on a normalised query, max 200 entries, 20 searches per IP per 10 min |
+| F6 | **Job feed** | Greenhouse, Lever, Ashby boards from `companies.json` plus the user's own boards, Himalayas, Remotive; ≤ 60 days old; title include + exclude filter (whole words); eligibility check (worldwide / region OK / not eligible / verify); one-tap filter bubbles for eligibility (with counts), India / abroad, remote / on-site, and sort; stat cards for jobs found, boards searched, open to you, skipped and archived; Archive (hide a job, e.g. already applied elsewhere) with an Archived view and Restore; More info per job with company founded year, HQ, latest revenue and funding looked up by Claude web search on the user's key, cached per company, with sources and dates; de-duplicated; cached server-side 1 hr on a normalised query, max 200 entries, 20 searches per IP per 10 min |
 | F7 | **Ghost and scam signals** | Each job carries flags: posted > 30 days, link closed, no salary or vague JD, asks for payment or personal-email contact. Flagged jobs ranked lower, never hidden silently |
 | F8 | **Paste a JD** | Paste text from LinkedIn/Naukri/anywhere + optional URL; same checks as feed (warnings, not blocks) |
 | F9 | **Match report** | Match score (rubric: must-haves 35, seniority 20, domain 20, skills 15, location 10), interview chance (Low/Med/High + % with stated adjustments), requirement ↔ evidence table with the source of each piece of evidence (experience, Skills section, implied PM practice, added by user), gaps |
@@ -119,8 +119,10 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 
 ## 8. Architecture (v1)
 
-- **Hosting:** Render free web service (`render.yaml`): builds `web/app`, runs `web/app/server.js` (static files with the CSP
-  headers + `/api/jobs` with a 1-hour in-memory cache). Free instances sleep after 15 min idle (~50 s first load).
+- **Hosting:** two free Render services (`render.yaml`). `jobber-web` is a static site (never sleeps, so the app opens instantly)
+  with the CSP headers, and rewrites `/api/*` to `jobber`, the Node web service running `web/app/server.js` (`/api/jobs` with a
+  1-hour in-memory cache; it still serves the full app at its own URL). Free web services sleep after 15 min idle, so only the first
+  job search after a quiet spell waits ~50 s. Link-preview URLs are filled at build time from `SITE_URL`.
   `vercel.json` stays as the header source and a Vercel fallback.
 - **Frontend:** Vite + React; all Claude calls from the browser with the user's key.
 - **Server:** one route, `/api/jobs`, fetches public job boards and caches for 1 hour. Never sees the key or resume.
@@ -200,3 +202,8 @@ Decided:
   clamped match score (`matchScore`). `/api/jobs` normalises the query before caching (junk params no longer bypass the cache), caps the
   cache at 200 entries and rate-limits 20 searches per IP per 10 minutes. Company boards read from `companies.json`, and users can add
   their own. Title exclude filter (F3, F6). Models split: Opus 5.5 writes, Sonnet 5.5 reads and scores, with prompt caching. Added CI.
+- **2026-11-21:** Instant first load: pages move to a Render static site (`jobber-web`) that never sleeps; `/api/*` is rewritten to
+  the existing web service. Jobs page (F6): filter bubbles replace the eligibility dropdown, plus India / abroad and remote / on-site
+  filters; stat cards with the number of jobs found and boards searched; Archive and an Archived view; More info with company
+  founded year, HQ, revenue and funding via Claude web search (JSON validated in code, sources shown). Job cards are no longer one big
+  role="button", so their inner buttons reach keyboard and screen-reader users.

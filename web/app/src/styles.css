@@ -89,6 +89,11 @@ del{color:var(--bad)}
 
 /* jobs */
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.bubbles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.bubbles button{font:inherit;font-size:13px;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.bubbles button:hover{border-color:var(--accent)}
+.bubbles button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.bubbles button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .filters select{width:auto;padding:7px 10px;font-size:13px}
 .job{display:grid;grid-template-columns:64px 1fr auto;gap:16px;align-items:center;padding:16px;border:1px solid var(--line);background:#fff;border-radius:14px;margin-bottom:10px;cursor:pointer}
 .job:hover{border-color:var(--accent)}
