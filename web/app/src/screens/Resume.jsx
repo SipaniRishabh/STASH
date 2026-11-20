@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Err, Spinner } from "../ui.jsx";
+import { DEFAULT_EXCLUDE } from "../lib/jobs.js";
 
 export default function Resume({ apiKey, demo, profile, setProfile, prefs, setPrefs }) {
   const [busy, setBusy] = useState("");
@@ -106,6 +107,8 @@ export default function Resume({ apiKey, demo, profile, setProfile, prefs, setPr
 
 function Prefs({ prefs, setPrefs, ready }) {
   const [newTitle, setNewTitle] = useState("");
+  // Edited as text, saved as a list when the field loses focus (so typing a comma doesn't jump around).
+  const [exText, setExText] = useState((prefs.exclude ?? DEFAULT_EXCLUDE).join(", "));
   const set = (k, v) => setPrefs({ ...prefs, [k]: v });
   const addTitle = () => {
     const t = newTitle.trim();
@@ -153,6 +156,15 @@ function Prefs({ prefs, setPrefs, ready }) {
       </div>
       <label htmlFor="db">Deal-breakers</label>
       <input id="db" placeholder="e.g. gambling, crypto, 6-day weeks" value={prefs.dealBreakers} onChange={(e) => set("dealBreakers", e.target.value)} />
+      <label htmlFor="ex">Skip job titles containing</label>
+      <input id="ex" placeholder="e.g. director, vp, intern" value={exText} onChange={(e) => setExText(e.target.value)}
+        onBlur={() => set("exclude", exText.split(",").map((s) => s.trim()).filter(Boolean))} />
+      <p className="small muted" style={{ margin: "4px 0 0" }}>Whole words, comma separated. "vp" skips "VP of Product" but not "MVP".</p>
+      <label htmlFor="boards">More companies to search (optional)</label>
+      <input id="boards" placeholder="greenhouse:razorpay, lever:swiggy, ashby:linear" value={prefs.boards || ""} onChange={(e) => set("boards", e.target.value)} />
+      <p className="small muted" style={{ margin: "4px 0 0" }}>
+        Use the company's name from its careers link: boards.greenhouse.io/<b>razorpay</b>, jobs.lever.co/<b>swiggy</b>, jobs.ashbyhq.com/<b>linear</b>. Up to 15.
+      </p>
       <div className="row" style={{ marginTop: 16 }}>
         {ready ? <a className="btn" href="#report" style={{ textDecoration: "none" }}>See my resume report</a> : <span className="small muted">Upload your resume to continue.</span>}
       </div>

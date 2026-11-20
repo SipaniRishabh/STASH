@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ELIG, eligibility, flags, overlap } from "../lib/jobs.js";
+import { DEFAULT_EXCLUDE, ELIG, eligibility, excludedBy, flags, matchScore, overlap } from "../lib/jobs.js";
 import { Err, Spinner, go } from "../ui.jsx";
 import { useStored } from "../lib/store.js";
 
@@ -13,7 +13,8 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
   const [sort, setSort] = useState("fit");
   const [paste, setPaste] = useState({ text: "", url: "" });
 
-  const query = `titles=${encodeURIComponent(prefs.titles.join(","))}&maxAge=${prefs.maxAge}`;
+  const exclude = prefs.exclude ?? DEFAULT_EXCLUDE;
+  const query = `titles=${encodeURIComponent(prefs.titles.join(","))}&maxAge=${prefs.maxAge}${prefs.boards?.trim() ? `&boards=${encodeURIComponent(prefs.boards)}` : ""}`;
 
   async function load() {
     setBusy(true);
@@ -37,8 +38,11 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
 
   const rows = useMemo(() => {
     if (!feed) return [];
-    return feed.jobs.map((j) => ({ job: j, elig: eligibility(j, prefs), flags: flags(j, prefs), hits: overlap(j, profile?.resume) }));
+    return feed.jobs
+      .filter((j) => !excludedBy(j.title, exclude))
+      .map((j) => ({ job: j, elig: eligibility(j, prefs), flags: flags(j, prefs), hits: overlap(j, profile?.resume) }));
   }, [feed, prefs, profile]);
+  const skipped = feed ? feed.jobs.length - rows.length : 0;
 
   const counts = { open: 0, verify: 0, no: 0 };
   rows.forEach((r) => counts[r.elig.status === "ok" ? "open" : r.elig.status]++);
@@ -49,7 +53,7 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
       const sa = latest(matches[a.job.id]), sb = latest(matches[b.job.id]);
       if (sort === "new") return a.job.ageDays - b.job.ageDays;
       // Scored jobs first by score, then quick skill overlap; each flag costs a little rank.
-      const k = (r, s) => (s ? 1000 + scoreOf(s) : r.hits.length * 5) - r.flags.length * 3;
+      const k = (r, s) => (s ? 1000 + matchScore(s) : r.hits.length * 5) - r.flags.length * 3;
       return k(b, sb) - k(a, sa);
     });
 
@@ -122,6 +126,7 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
             <span className="small muted" style={{ alignSelf: "center" }}>
               Updated {new Date(feed.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               {feed.failed ? ` · ${feed.failed} of ${feed.sources} boards didn't respond` : ""}
+              {skipped ? ` · ${skipped} skipped by your title filter (${exclude.join(", ")})` : ""}
             </span>
           </div>
           {!visible.length && <p className="muted">No jobs here. Try another filter, more titles, or a longer time window on the Resume step.</p>}
@@ -133,10 +138,8 @@ export default function Jobs({ profile, prefs, matches, setCurrent }) {
   );
 }
 
-const scoreOf = (s) => Object.values(s.parts).reduce((a, p) => a + p.score, 0);
-
 function JobRow({ job, elig, flags, hits, scored, onOpen }) {
-  const m = scored ? scoreOf(scored) : null;
+  const m = scored ? matchScore(scored) : null;
   const col = m == null ? "var(--line)" : m >= 75 ? "var(--good)" : m >= 55 ? "var(--warn)" : "var(--bad)";
   const [cls, label] = ELIG[elig.status];
   return (

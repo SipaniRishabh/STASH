@@ -1,12 +1,41 @@
-// GET /api/jobs?titles=Product Manager,Senior Product Manager&maxAge=60
+// GET /api/jobs?titles=Product Manager,Senior Product Manager&maxAge=60&boards=greenhouse:razorpay,lever:swiggy
 // Fetches public job boards, keeps fresh title matches, returns plain-text jobs. Never sees the key or resume.
 // Vercel caches the response for 1 hour (s-maxage). In dev, vite.config.js mounts this same handler.
+import { readFileSync } from "node:fs";
 
-const BOARDS = {
-  greenhouse: ["groww", "slice", "inmobi", "hackerrank", "databricks", "stripe", "figma", "airbnb", "coinbase", "gitlab", "anthropic", "remote", "mongodb"],
-  lever: ["meesho", "cred"],
-  ashby: ["notion", "openai", "perplexity", "cohere", "zapier", "deel"],
-};
+// Company boards come from companies.json at the repo root (shared with scripts/fetch_jobs.py), so adding a
+// company is a one-line config change. Users can add their own boards too (the `boards` query param).
+const SOURCES = ["greenhouse", "lever", "ashby"];
+const SLUG = /^[a-z0-9][a-z0-9-]{1,49}$/;
+const MAX_USER_BOARDS = 15;
+export const BOARDS = loadBoards();
+
+function loadBoards() {
+  try {
+    const cfg = JSON.parse(readFileSync(new URL("../../../companies.json", import.meta.url), "utf8"));
+    return Object.fromEntries(SOURCES.map((s) => [s, (cfg[s] || []).filter((t) => SLUG.test(t))]));
+  } catch (e) {
+    console.error("companies.json missing or invalid; using job sites only", e.message);
+    return Object.fromEntries(SOURCES.map((s) => [s, []]));
+  }
+}
+
+/**
+ * One canonical form of the query, used both to run the search and as the cache key. Anything not listed here
+ * is dropped, so `?x=1`, `?x=2`… all hit the same cache entry instead of each triggering a fresh fetch.
+ * titles: up to 5, lowercased, sorted, de-duplicated. maxAge: whole days, 7..90. boards: "source:slug", validated.
+ */
+export function normalizeQuery(params) {
+  const titles = [...new Set((params.get("titles") || "product manager").split(",").map((t) => t.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 60)).filter(Boolean))].sort().slice(0, 5);
+  const maxAge = Math.min(90, Math.max(7, Math.round(+params.get("maxAge") || 60)));
+  const boards = [...new Set((params.get("boards") || "").split(",").map((b) => b.trim().toLowerCase().replace(/\s+/g, "")).filter((b) => {
+    const [source, slug, extra] = b.split(":");
+    return !extra && SOURCES.includes(source) && SLUG.test(slug || "");
+  }))].sort().slice(0, MAX_USER_BOARDS);
+  const q = new URLSearchParams({ titles: (titles.length ? titles : ["product manager"]).join(","), maxAge: String(maxAge) });
+  if (boards.length) q.set("boards", boards.join(","));
+  return q.toString();
+}
 
 const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'" };
 const unescape = (s) => s.replace(/&(#?\w+);/g, (m, e) => ENT[e] ?? (e[0] === "#" ? String.fromCodePoint(+e.slice(1).replace(/^x/, "0x")) : m));
@@ -61,14 +90,19 @@ const remotive = async (q) =>
   );
 
 export async function GET(request) {
-  const p = new URL(request.url).searchParams;
-  const titles = (p.get("titles") || "product manager").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5);
-  const maxAge = Math.min(+p.get("maxAge") || 60, 90);
+  const p = new URLSearchParams(normalizeQuery(new URL(request.url).searchParams));
+  const titles = p.get("titles").split(",");
+  const maxAge = +p.get("maxAge");
 
+  // Built-in boards plus the user's own, without duplicates.
+  const boards = Object.fromEntries(SOURCES.map((s) => [s, new Set(BOARDS[s])]));
+  for (const b of (p.get("boards") || "").split(",").filter(Boolean)) {
+    const [source, slug] = b.split(":");
+    boards[source].add(slug);
+  }
+  const fetchers = { greenhouse, lever, ashby };
   const tasks = [
-    ...BOARDS.greenhouse.map((t) => greenhouse(t)),
-    ...BOARDS.lever.map((t) => lever(t)),
-    ...BOARDS.ashby.map((t) => ashby(t)),
+    ...SOURCES.flatMap((s) => [...boards[s]].map((t) => fetchers[s](t))),
     ...titles.flatMap((t) => [himalayas(t), remotive(t)]),
   ];
   // One board failing never breaks the feed.
@@ -93,4 +127,17 @@ export async function GET(request) {
     { jobs, sources: tasks.length, failed, fetchedAt: new Date().toISOString() },
     { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=600" } },
   );
+}
+
+// Self-check (no network): node api/jobs.js
+if (typeof process !== "undefined" && process.argv?.[1]?.endsWith("jobs.js") && process.argv[1].includes("api")) {
+  const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${a} != ${b}`); };
+  const n = (s) => normalizeQuery(new URLSearchParams(s));
+  eq(n("titles=Senior PM, product manager&maxAge=60"), n("maxAge=60&titles=product  manager,senior pm&x=1&junk=2"), "same search, same key");
+  eq(n("titles=pm&maxAge=999"), n("titles=pm&maxAge=90"), "maxAge clamped high");
+  eq(n("titles=pm&maxAge=-5"), n("titles=pm&maxAge=7"), "maxAge clamped low");
+  eq(new URLSearchParams(n("titles=a,b,c,d,e,f,g")).get("titles").split(",").length, 5, "max 5 titles");
+  eq(new URLSearchParams(n("boards=greenhouse:razorpay,evil:x,lever:../etc,ashby:linear,greenhouse:razorpay")).get("boards"), "ashby:linear,greenhouse:razorpay", "boards validated");
+  if (!BOARDS.greenhouse.length) throw new Error("companies.json not loaded");
+  console.log("api/jobs.js ok");
 }

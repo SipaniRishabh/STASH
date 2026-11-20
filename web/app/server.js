@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { GET } from "./api/jobs.js";
+import { GET, normalizeQuery } from "./api/jobs.js";
 
 const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 const HEADERS = Object.fromEntries(
@@ -21,17 +21,18 @@ const TYPES = {
 
 // ponytail: one process, in-memory cache; fine for a single free instance. Use a shared cache if it ever scales out.
 const HOUR = 36e5;
-const cache = new Map(); // query string -> { at, body, pending }
+const MAX_ENTRIES = 200; // oldest entry is dropped beyond this, so memory stays bounded
+const cache = new Map(); // canonical query -> { at, body, pending }; Map keeps insertion order = age
 
 async function jobs(query) {
   const hit = cache.get(query);
   if (hit?.body && Date.now() - hit.at < HOUR) return hit.body;
   if (hit?.pending) return hit.pending; // a search for the same query is already running
   const pending = GET(new Request(`http://local/api/jobs?${query}`)).then((r) => r.text());
-  cache.set(query, { ...hit, pending });
+  remember(query, { ...hit, pending });
   try {
     const body = await pending;
-    cache.set(query, { at: Date.now(), body });
+    remember(query, { at: Date.now(), body });
     return body;
   } catch (e) {
     cache.delete(query);
@@ -39,11 +40,41 @@ async function jobs(query) {
   }
 }
 
+function remember(key, value) {
+  cache.delete(key); // re-insert at the end, so it counts as newest
+  cache.set(key, value);
+  while (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value);
+}
+
+// Rate limit per IP: each fresh search makes ~25 requests to job boards, so cap how often one visitor can ask.
+// The app itself searches about once an hour per user; 20 per 10 minutes leaves plenty of room for Refresh.
+const WINDOW = 10 * 60e3, LIMIT = 20;
+const hits = new Map(); // ip -> timestamps in the current window
+function limited(req) {
+  // Render sits behind Cloudflare, which sets cf-connecting-ip to the real visitor. x-forwarded-for is a fallback;
+  // its first entry can be faked by the client, so this is a speed bump, not a hard security boundary.
+  const h = req.headers;
+  const ip = String(h["cf-connecting-ip"] || h["true-client-ip"] || h["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter((t) => now - t < WINDOW);
+  recent.push(now);
+  hits.set(ip, recent);
+  return recent.length > LIMIT;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, ts] of hits) if (!ts.some((t) => now - t < WINDOW)) hits.delete(ip);
+}, WINDOW).unref();
+
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://local");
   try {
     if (url.pathname === "/api/jobs") {
-      const body = await jobs(url.searchParams.toString());
+      if (limited(req)) {
+        res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "600", ...HEADERS });
+        return res.end(JSON.stringify({ error: "Too many job searches. Wait a few minutes and try again." }));
+      }
+      const body = await jobs(normalizeQuery(url.searchParams));
       res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store", ...HEADERS });
       return res.end(body);
     }
