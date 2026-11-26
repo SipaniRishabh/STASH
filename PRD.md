@@ -128,8 +128,9 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 - **Frontend:** Vite + React; all Claude calls from the browser with the user's key.
 - **Server:** `/api/jobs` fetches public job boards and caches for 1 hour. `/api/trace` (F15) relays opt-in traces to Langfuse
   with the Langfuse secret key, which only the server holds (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, optional `LANGFUSE_HOST`);
-  it accepts only Langfuse ingestion events, at most 40 per request and 1 MB, 150 requests per IP per 10 min, and does nothing
-  when the keys aren't set. It tags each trace with the deployed commit (release) and production/development (environment).
+  it accepts one trace per request (its Claude calls and check scores only, at most 40 events and 1 MB), 150 requests per IP per
+  10 min, and does nothing when the keys aren't set. It sends the trace as OpenTelemetry spans to Langfuse's v4 endpoint
+  (`/api/public/otel/v1/traces`) and the scores to `/api/public/scores`; Langfuse Cloud no longer accepts the old ingestion API. It tags each trace with the deployed commit (release) and production/development (environment).
   The server never sees the key, and sees resume text only from users who opted in, with personal details already removed.
 - **Models:** Claude Opus 5.5 (`claude-opus-5-5`) for writing that goes to recruiters (tailored resume, cover note); Claude Sonnet 5.5
   (`claude-sonnet-5-5`) for reading resumes, match scoring, story review and one-line fixes. Server-side refusal fallbacks on for both.
@@ -216,4 +217,6 @@ Decided:
   founded year, HQ, revenue and funding via Claude web search (JSON validated in code, sources shown). Job cards are no longer one big
   role="button", so their inner buttons reach keyboard and screen-reader users.
 - **2026-11-26:** Added opt-in session sharing (F15): Langfuse tracing of every Claude call through a new `/api/trace` relay, with
-  in-browser redaction and deterministic-check scores, to support error analysis of real sessions.
+  in-browser redaction and deterministic-check scores, to support error analysis of real sessions. Same day: the relay now sends
+  Langfuse v4 OpenTelemetry spans (one root span per feature call, one generation per Claude request, user/session/environment on
+  every span) and posts scores separately, because Langfuse Cloud stopped accepting the legacy ingestion API on 2026-11-16.
