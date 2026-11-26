@@ -7,3 +7,4 @@ web/app/node_modules/
 web/app/dist/
 .env
 .DS_Store
+.env.local

@@ -67,7 +67,7 @@ export default function Resume({ apiKey, demo, profile, setProfile, prefs, setPr
             ) : (
               <>
                 <b>Drop your resume PDF here, or click to choose</b>
-                <div className="small muted">Read in your browser, then sent only to Anthropic with your key</div>
+                <div className="small muted">Read in your browser, then sent only to Anthropic with your key. The file itself never goes anywhere else</div>
               </>
             )}
           </label>

@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GET, normalizeQuery } from "./api/jobs.js";
+import { POST as trace } from "./api/trace.js";
 
 const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 const HEADERS = Object.fromEntries(
@@ -48,23 +49,29 @@ function remember(key, value) {
 
 // Rate limit per IP: each fresh search makes ~25 requests to job boards, so cap how often one visitor can ask.
 // The app itself searches about once an hour per user; 20 per 10 minutes leaves plenty of room for Refresh.
-const WINDOW = 10 * 60e3, LIMIT = 20;
-const hits = new Map(); // ip -> timestamps in the current window
-function limited(req) {
-  // Render sits behind Cloudflare, which sets cf-connecting-ip to the real visitor. x-forwarded-for is a fallback;
-  // its first entry can be faked by the client, so this is a speed bump, not a hard security boundary.
-  const h = req.headers;
-  const ip = String(h["cf-connecting-ip"] || h["true-client-ip"] || h["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
-  const now = Date.now();
-  const recent = (hits.get(ip) || []).filter((t) => now - t < WINDOW);
-  recent.push(now);
-  hits.set(ip, recent);
-  return recent.length > LIMIT;
+// Traces have their own, looser budget (one per Claude call; a busy session makes a few dozen), so they never use up searches.
+const WINDOW = 10 * 60e3;
+const searches = limiter(20), traces = limiter(150);
+const limited = (req) => searches(req);
+
+function limiter(LIMIT) {
+  const hits = new Map(); // ip -> timestamps in the current window
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, ts] of hits) if (!ts.some((t) => now - t < WINDOW)) hits.delete(ip);
+  }, WINDOW).unref();
+  return (req) => {
+    // Render sits behind Cloudflare, which sets cf-connecting-ip to the real visitor. x-forwarded-for is a fallback;
+    // its first entry can be faked by the client, so this is a speed bump, not a hard security boundary.
+    const h = req.headers;
+    const ip = String(h["cf-connecting-ip"] || h["true-client-ip"] || h["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+    const now = Date.now();
+    const recent = (hits.get(ip) || []).filter((t) => now - t < WINDOW);
+    recent.push(now);
+    hits.set(ip, recent);
+    return recent.length > LIMIT;
+  };
 }
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, ts] of hits) if (!ts.some((t) => now - t < WINDOW)) hits.delete(ip);
-}, WINDOW).unref();
 
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://local");
@@ -77,6 +84,17 @@ createServer(async (req, res) => {
       const body = await jobs(normalizeQuery(url.searchParams));
       res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store", ...HEADERS });
       return res.end(body);
+    }
+    if (url.pathname === "/api/trace" && req.method === "POST") {
+      if (traces(req)) return res.writeHead(429, HEADERS).end();
+      const chunks = [];
+      let size = 0;
+      for await (const c of req) {
+        if ((size += c.length) > 1_000_000) return res.writeHead(413, HEADERS).end();
+        chunks.push(c);
+      }
+      const r = await trace(new Request("http://local/api/trace", { method: "POST", body: Buffer.concat(chunks) }));
+      return res.writeHead(r.status, HEADERS).end();
     }
     if (url.pathname === "/healthz") return res.end("ok");
 

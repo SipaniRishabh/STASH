@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "test": "node src/lib/jobs.js && node src/lib/tailor.js && node api/jobs.js"
+    "test": "node src/lib/jobs.js && node src/lib/tailor.js && node src/lib/trace.js && node api/jobs.js && node api/trace.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",

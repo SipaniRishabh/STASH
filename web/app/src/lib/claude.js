@@ -1,10 +1,15 @@
 // All Claude calls go straight from the browser to api.anthropic.com with the user's own key.
-// Our server never sees the key or the resume.
+// Our server never sees the key. It sees resume text only if the user opts in to sharing sessions (lib/trace.js), with
+// their name and contact details removed first.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { BANNED } from "./lint.js";
 import { impliedSkills } from "./pmskills.js";
+import { lint, score as healthScore } from "./lint.js";
+import { tailorChecks } from "./tailor.js";
+import { matchScore } from "./jobs.js";
+import { traced } from "./trace.js";
 
 // Model per job. Writing that goes to a recruiter (tailored resume, cover note) gets the strongest model.
 // Reading and judging (resume read, match scoring, story review, one-line fixes) runs many times per user,
@@ -58,36 +63,59 @@ const WRITING_RULES = `Writing rules for any rewrite:
 - No em dashes or en dashes. No rule-of-three padding. No grand framing.
 - Never use these words or stems: ${BANNED.join(", ")}.`;
 
+// Same human-voice rules the resume report uses, for one line of model writing. Feeds trace scores only.
+const voiceOk = (text) => !BANNED.some((w) => text.toLowerCase().includes(w)) && !/[—–]/.test(text);
+const words = (text) => text.split(/\s+/).filter(Boolean).length;
+
 function client(apiKey) {
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
 
-async function ask(apiKey, schema, content, { model = MODELS.judge, effort = "medium", tools } = {}) {
-  try {
-    const messages = [{ role: "user", content }];
-    let res;
-    for (let turn = 0; turn < 4; turn++) {
-      res = await client(apiKey).beta.messages.parse({
-        model,
-        max_tokens: 16000,
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        output_config: { effort, format: betaZodOutputFormat(schema) },
-        messages,
-        ...(tools && { tools }),
-      });
-      // Server tools (web fetch) can pause a long turn; resend the assistant turn so the server resumes it.
-      logUsage(model, res.usage);
-      if (res.stop_reason !== "pause_turn") break;
-      messages.push({ role: "assistant", content: res.content.map(({ parsed_output, ...b }) => b) });
+/**
+ * One feature call = one trace (when the user opted in, see lib/trace.js). name = the feature, e.g. "score_job".
+ * meta = small searchable facts for the trace (job title, company). checks(out, trace) adds deterministic scores.
+ */
+async function ask(apiKey, schema, content, { name = "claude", meta, checks, model = MODELS.judge, effort = "medium", tools } = {}) {
+  return traced(name, { metadata: { ...meta, model, effort } }, async (trace) => {
+    try {
+      const messages = [{ role: "user", content }];
+      let res;
+      for (let turn = 0; turn < 4; turn++) {
+        const params = {
+          model,
+          max_tokens: 16000,
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          output_config: { effort, format: betaZodOutputFormat(schema) },
+          messages: [...messages],
+          ...(tools && { tools }),
+        };
+        const gen = trace.generation(params);
+        try {
+          res = await client(apiKey).beta.messages.parse(params);
+        } catch (e) {
+          gen.end({ error: e });
+          throw e;
+        }
+        gen.end({ res, output: res.parsed_output ?? res.content });
+        // Server tools (web fetch) can pause a long turn; resend the assistant turn so the server resumes it.
+        logUsage(model, res.usage);
+        if (res.stop_reason !== "pause_turn") break;
+        messages.push({ role: "assistant", content: res.content.map(({ parsed_output, ...b }) => b) });
+      }
+      if (res.stop_reason === "refusal") throw new Error("Claude declined this request. Try a different file.");
+      if (res.stop_reason === "max_tokens") throw new Error("The answer was cut off. Try again.");
+      if (!res.parsed_output) throw new Error("Claude's answer could not be read. Try again.");
+      try {
+        checks?.(res.parsed_output, trace);
+      } catch {
+        /* a check bug must never block the answer */
+      }
+      return res.parsed_output;
+    } catch (e) {
+      throw new Error(friendly(e));
     }
-    if (res.stop_reason === "refusal") throw new Error("Claude declined this request. Try a different file.");
-    if (res.stop_reason === "max_tokens") throw new Error("The answer was cut off. Try again.");
-    if (!res.parsed_output) throw new Error("Claude's answer could not be read. Try again.");
-    return res.parsed_output;
-  } catch (e) {
-    throw new Error(friendly(e));
-  }
+  });
 }
 
 // Open the browser console (F12) to see whether caching works: cache_read > 0 on the 2nd job you score in a row.
@@ -120,7 +148,17 @@ export function readResume(apiKey, pdfBase64) {
   return ask(apiKey, ResumeRead, [
     { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
     { type: "text", text: `Read this resume.\n\n${READ_STEPS}` },
-  ]);
+  ], { name: "read_resume", checks: readChecks });
+}
+
+// How complete the read is: empty fields usually mean the model skipped part of the resume.
+function readChecks(out, t) {
+  const r = out.resume;
+  t.score("roles_found", r.experience.length);
+  t.score("bullets_found", r.experience.reduce((n, e) => n + e.bullets.length, 0));
+  t.score("has_contact", Boolean(r.contact.email || r.contact.phone));
+  t.score("language_issues", out.language_issues.length);
+  t.score("resume_health", healthScore(lint(r, "", 1, out.language_issues)).overall);
 }
 
 const DocRead = ResumeRead.extend({
@@ -149,7 +187,11 @@ Otherwise set fetch_failed to false, copy the fetched text verbatim (including a
 
 ${READ_STEPS}`,
     }],
-    { tools: [{ type: "web_fetch_20260209", name: "web_fetch", max_uses: 2, allowed_domains: ["docs.google.com", "googleusercontent.com"] }] },
+    {
+      name: "read_resume_doc",
+      tools: [{ type: "web_fetch_20260209", name: "web_fetch", max_uses: 2, allowed_domains: ["docs.google.com", "googleusercontent.com"] }],
+      checks: (out, t) => { t.score("fetch_ok", !out.fetch_failed); if (!out.fetch_failed) readChecks(out, t); },
+    },
   );
   if (out.fetch_failed) throw new Error("Couldn't open that doc. In Google Docs, set Share > General access to \"Anyone with the link\" (Viewer), then try again.");
   return out;
@@ -189,7 +231,15 @@ improved = a rewrite of the bullet that makes problem, metric and ownership clea
 resume, or "" if the bullet is already strong. Options and trade-offs usually belong in the interview, not the bullet.
 
 ${WRITING_RULES}`,
-  }]);
+  }], {
+    name: "review_stories",
+    checks: (out, t) => {
+      const all = flatText(resume);
+      t.score("stories", out.stories.length);
+      t.score("achievements_copied_exactly", out.stories.every((s) => all.includes(s.achievement)), "each achievement should be a bullet copied verbatim");
+      t.score("rewrites_voice_ok", out.stories.every((s) => voiceOk(s.improved)));
+    },
+  });
 }
 
 /** Suggest an honest rewrite for one flagged line. */
@@ -205,9 +255,20 @@ export function suggestFix(apiKey, resume, line, issue) {
         text: `Rewrite this one line to fix the issue.\nLine: ${line}\nIssue: ${issue}\n\nsuggested = the replacement line only. note = one short sentence on what changed.`,
       },
     ],
-    { effort: "low" },
+    {
+      name: "suggest_fix",
+      effort: "low",
+      meta: { issue },
+      checks: (out, t) => {
+        t.score("voice_ok", voiceOk(out.suggested));
+        t.score("under_230_chars", out.suggested.length <= 230);
+        t.score("changed", out.suggested.trim() !== line.trim());
+      },
+    },
   );
 }
+
+const flatText = (r) => JSON.stringify(r).replace(/\\"/g, '"'); // all resume text, quotes unescaped, for "is this copied exactly" checks
 
 const Part = z.object({ score: z.number(), note: z.string() });
 const Match = z.object({
@@ -261,7 +322,22 @@ Description:
 ${job.description}
 
 Score how well the resume above fits this job, following the scoring rules above.`,
-  }]);
+  }], {
+    name: "score_job",
+    meta: { job_title: job.title, company: job.company, source: job.source || "" },
+    checks: (out, t) => {
+      t.score("match_score", matchScore(out));
+      t.score("parts_in_range", Object.entries({ must_haves: 35, seniority: 20, domain: 20, skills: 15, location: 10 }).every(([k, max]) => out.parts[k].score >= 0 && out.parts[k].score <= max));
+      t.score("keywords_8_to_15", out.must_have_keywords.length >= 8 && out.must_have_keywords.length <= 15, `${out.must_have_keywords.length} keywords`);
+      // Rows marked met/partial must cite evidence; experience evidence must be a line that is really in the resume.
+      const all = flatText(resume);
+      const unsupported = out.requirements.filter((r) => r.status !== "gap" && (r.source === "none" || !r.evidence));
+      const misquoted = out.requirements.filter((r) => r.source === "experience" && r.evidence && !all.includes(r.evidence.slice(0, 60)));
+      t.score("evidence_cited", !unsupported.length, unsupported.map((r) => r.requirement).join("; "));
+      t.score("evidence_quoted_exactly", !misquoted.length, misquoted.map((r) => r.evidence.slice(0, 80)).join("; "));
+      t.score("hard_must_have_missing", out.missing_hard_must_have);
+    },
+  });
 }
 
 const SCORING_RULES = `Scoring rules. You will be given one job after this. Score how well the resume fits it. Be honest and specific; never assume experience the resume does not show.
@@ -318,7 +394,13 @@ changes: every bullet or summary line you changed: before (exact original, "" if
 keywords_used: job keywords now present in the resume. left_out: job keywords you could not use honestly.
 
 ${WRITING_RULES}`,
-  }], { model: MODELS.write });
+  }], {
+    name: "tailor_resume",
+    model: MODELS.write,
+    meta: { job_title: job.title, company: job.company },
+    // The same checks the Tailor screen shows the user (lib/tailor.js), one score each.
+    checks: (out, t) => tailorChecks(resume, out.resume, match.must_have_keywords, evidence).forEach((c) => t.score(`check_${c.id}`, c.ok, c.detail)),
+  });
 }
 
 const CompanyInfo = z.object({
@@ -352,19 +434,27 @@ Never guess numbers. If two companies share the name, use the one that posted th
 
 Reply with ONLY one JSON object, no other text, with exactly these keys:
 {"found": true, "summary": "", "founded": "", "headquarters": "", "revenue": "", "revenue_as_of": "", "funding": "", "funding_as_of": "", "sources": [{"title": "", "url": ""}]}`;
-  try {
+  return traced("company_info", { metadata: { company, model: MODELS.judge, effort: "low" } }, async (trace) => { try {
     const messages = [{ role: "user", content: prompt }];
     let res;
     for (let turn = 0; turn < 4; turn++) {
-      res = await client(apiKey).beta.messages.create({
+      const params = {
         model: MODELS.judge,
         max_tokens: 16000,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
         output_config: { effort: "low" },
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
-        messages,
-      });
+        messages: [...messages],
+      };
+      const gen = trace.generation(params);
+      try {
+        res = await client(apiKey).beta.messages.create(params);
+      } catch (e) {
+        gen.end({ error: e });
+        throw e;
+      }
+      gen.end({ res });
       logUsage(MODELS.judge, res.usage);
       if (res.stop_reason !== "pause_turn") break;
       messages.push({ role: "assistant", content: res.content });
@@ -375,11 +465,15 @@ Reply with ONLY one JSON object, no other text, with exactly these keys:
     const parsed = CompanyInfo.safeParse(JSON.parse(json || "null"));
     if (!parsed.success) throw new Error("Claude's answer could not be read. Try again.");
     // Only http(s) links are ever shown.
-    return { ...parsed.data, sources: parsed.data.sources.filter((s) => /^https?:\/\//.test(s.url)) };
+    const out = { ...parsed.data, sources: parsed.data.sources.filter((s) => /^https?:\/\//.test(s.url)) };
+    trace.score("found", out.found);
+    trace.score("sources", out.sources.length);
+    trace.score("revenue_disclosed", out.found && !/not disclosed/i.test(out.revenue));
+    return out;
   } catch (e) {
     if (e instanceof SyntaxError) throw new Error("Claude's answer could not be read. Try again.");
     throw new Error(friendly(e));
-  }
+  } });
 }
 
 const Cover = z.object({ why_company: z.string(), why_role: z.string(), cover_note: z.string() });
@@ -400,5 +494,15 @@ Write, in the candidate's voice (first person), plain and specific:
 - cover_note: at most 120 words, no greeting line and no sign-off, no clichés, ends with one plain sentence asking for a conversation.
 
 ${WRITING_RULES}`,
-  }], { model: MODELS.write, effort: "low" });
+  }], {
+    name: "cover_note",
+    model: MODELS.write,
+    effort: "low",
+    meta: { job_title: job.title, company: job.company },
+    checks: (out, t) => {
+      t.score("cover_note_words", words(out.cover_note));
+      t.score("cover_note_under_120_words", words(out.cover_note) <= 120);
+      t.score("voice_ok", [out.why_company, out.why_role, out.cover_note].every(voiceOk));
+    },
+  });
 }
