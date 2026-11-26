@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStored, forgetEverything } from "./lib/store.js";
+import { setIdentity, setTracing, tracingOn } from "./lib/trace.js";
 import { DEMO_RESUME, DEMO_RAW_TEXT, DEMO_PAGES, DEMO_UNDERSTANDING, DEMO_LANGUAGE } from "./demo.js";
 import { go } from "./ui.jsx";
 import { DEFAULT_EXCLUDE } from "./lib/jobs.js";
@@ -54,6 +55,8 @@ export default function App() {
   const [realMatches, setRealMatches] = useStored("matches", {});
   const [demoMatches, setDemoMatches] = useState({});
   const [current, setCurrent] = useStored("current", null);
+  // Shared sessions (opt-in) have the user's name and contact details removed; tell the tracer what they are.
+  useEffect(() => setIdentity(realProfile?.resume), [realProfile]);
   // Claude calls run here, not in the screen, so they keep going when the user moves between steps.
   // They stop only if the tab is closed or reloaded (the key never goes to a server, so there is no server-side job).
   const [tasks, setTasks] = useState({}); // key -> { label, running } | { label, error }
@@ -164,6 +167,11 @@ function Home({ startDemo }) {
 function Setup({ apiKey, setApiKey, startDemo }) {
   const [val, setVal] = useState(apiKey);
   const [msg, setMsg] = useState("");
+  const [share, setShare] = useState(tracingOn);
+  const toggleShare = (on) => {
+    setTracing(on);
+    setShare(on);
+  };
   const saveKey = () => {
     const k = val.trim();
     if (!k.startsWith("sk-ant-")) return setMsg("That doesn't look like an Anthropic API key. It should start with sk-ant-.");
@@ -182,6 +190,14 @@ function Setup({ apiKey, setApiKey, startDemo }) {
           <button className="btn" onClick={saveKey}>Save and continue</button>
           {apiKey && <button className="btn ghost" onClick={() => { setApiKey(""); setVal(""); setMsg("Key removed from this browser."); }}>Forget my key</button>}
         </div>
+        <label className="small" style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 18, fontWeight: "normal" }}>
+          <input type="checkbox" checked={share} onChange={(e) => toggleShare(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+          <span>
+            Share my sessions to help improve Jobber (off by default). Jobber then sends what it asks Claude and what Claude answers,
+            with your name, email, phone and LinkedIn removed, to its server and on to Langfuse, a tool for reviewing AI answers.
+            Your key and your resume file are never sent. Untick any time; nothing already shared is sent again.
+          </span>
+        </label>
         <div className="row" style={{ marginTop: 18 }}>
           <button className="linkbtn small" onClick={() => { if (confirm("Delete your key, resume, preferences and tracker from this browser? This can't be undone.")) { forgetEverything(); location.hash = "home"; location.reload(); } }}>Delete all my Jobber data from this browser</button>
         </div>

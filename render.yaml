@@ -56,3 +56,12 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # Opt-in session tracing (PRD F15). Set these in the Render dashboard (sync: false keeps them out of this file).
+      # Leave them empty and /api/trace accepts and drops traces.
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      # https://cloud.langfuse.com (EU, default), https://us.cloud.langfuse.com (US), or your self-hosted URL.
+      - key: LANGFUSE_HOST
+        sync: false

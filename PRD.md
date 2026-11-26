@@ -69,6 +69,7 @@ Flow: Landing → Connect key → Resume → Resume report → Jobs → Match re
 | F12 | **Assisted apply** | Jobber never submits. User marks "I'm going to apply" (tracker: Planning to apply), "Not applying" with optional reason, or "I've submitted" (confirm dialog, tracker: Applied). One tracker row per job, updated in place |
 | F13 | **Tracker** | Table with status (Planning to apply, Applied, Intro Call Done, Interview Scheduled, Passed, Rejected, Ghosted, Not applying), notes, counts per status, match score links back to the job's match report; export CSV (opens in Excel) |
 | F14 | **Responsive** | Usable on phone and tablet widths |
+| F15 | **Opt-in session sharing (LLM tracing)** | Checkbox on Connect, off by default. When on, every Claude call is traced to Langfuse through our `/api/trace` relay: one trace per feature call (read resume, read Doc, review stories, suggest fix, score job, tailor, company info, cover note) with session and anonymous browser ids, one generation per Claude request (prompt, output, model actually used, effort, tokens incl. cache, stop reason, errors), and scores from Jobber's deterministic checks (tailor checks, evidence quoted exactly, keyword count, voice lint, cover-note length). Name, email, phone, LinkedIn and any API key are replaced in the browser; PDFs are never sent. Tracing never blocks a feature. Used for error analysis |
 
 ## 6. Prioritisation of competitor features
 
@@ -125,7 +126,11 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
   job search after a quiet spell waits ~50 s. Link-preview URLs are filled at build time from `SITE_URL`.
   `vercel.json` stays as the header source and a Vercel fallback.
 - **Frontend:** Vite + React; all Claude calls from the browser with the user's key.
-- **Server:** one route, `/api/jobs`, fetches public job boards and caches for 1 hour. Never sees the key or resume.
+- **Server:** `/api/jobs` fetches public job boards and caches for 1 hour. `/api/trace` (F15) relays opt-in traces to Langfuse
+  with the Langfuse secret key, which only the server holds (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, optional `LANGFUSE_HOST`);
+  it accepts only Langfuse ingestion events, at most 40 per request and 1 MB, 150 requests per IP per 10 min, and does nothing
+  when the keys aren't set. It tags each trace with the deployed commit (release) and production/development (environment).
+  The server never sees the key, and sees resume text only from users who opted in, with personal details already removed.
 - **Models:** Claude Opus 5.5 (`claude-opus-5-5`) for writing that goes to recruiters (tailored resume, cover note); Claude Sonnet 5.5
   (`claude-sonnet-5-5`) for reading resumes, match scoring, story review and one-line fixes. Server-side refusal fallbacks on for both.
   Effort `medium` by default, `low` for single-line fixes and cover notes. Prompt caching: the resume and fixed rules go first in a
@@ -142,6 +147,7 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 - No third-party scripts; strict Content Security Policy (scripts self only; connect to self + `api.anthropic.com`).
 - All job text and model output rendered as plain text, never HTML.
 - UI tells users to create a dedicated key with a spend limit.
+- Session sharing is opt-in; redaction runs in the browser before sending; the Langfuse secret key stays on the server; the CSP is unchanged (traces go to 'self').
 
 ## 10. Risks
 
@@ -151,6 +157,8 @@ Auto-submitting applications, editing the user's Google Doc directly (needs Goog
 | Job boards change APIs or block | Multiple sources; per-source failures don't break the feed |
 | Interview chance is uncalibrated at launch | Labelled as an estimate with stated reasons; calibrate from tracker outcomes (v2) |
 | Visitors without a key bounce | Demo mode with sample resume and saved results |
+| Shared traces leak who a user is | Opt-in only; name, contact, LinkedIn and keys replaced in the browser; PDFs never sent; anonymous ids. Employers and job text stay, as they are needed for analysis |
+| Junk posted to `/api/trace` | Event-type allowlist, size and batch caps, per-IP rate limit (speed bump, not auth) |
 | Model rewrites drift into AI-speak | Deterministic lint after every rewrite; fail and rewrite until clean |
 
 ## 11. Open questions
@@ -207,3 +215,5 @@ Decided:
   filters; stat cards with the number of jobs found and boards searched; Archive and an Archived view; More info with company
   founded year, HQ, revenue and funding via Claude web search (JSON validated in code, sources shown). Job cards are no longer one big
   role="button", so their inner buttons reach keyboard and screen-reader users.
+- **2026-11-26:** Added opt-in session sharing (F15): Langfuse tracing of every Claude call through a new `/api/trace` relay, with
+  in-browser redaction and deterministic-check scores, to support error analysis of real sessions.
