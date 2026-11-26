@@ -41,6 +41,7 @@ const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const PHONE = /(?<![\w-])\+?\(?\d[\d\s().-]{8,}\d(?![\w-])/g;
 // Ids and times Jobber generates itself: never redacted, or traces lose their links to each other.
 const OWN = new Set(["id", "traceId", "sessionId", "userId", "timestamp", "startTime", "endTime"]);
+// The relay (api/trace.js) turns these events into Langfuse v4 OpenTelemetry spans plus scores.
 const LINKEDIN = /(https?:\/\/)?([\w-]+\.)?linkedin\.com\/[^\s"]*/gi;
 const KEY = /sk-ant-[\w-]+/g;
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -135,6 +136,7 @@ export function startTrace(name, { input, metadata } = {}) {
         body: {
           id,
           name,
+          endTime: now(),
           sessionId: session,
           userId: user,
           input,
